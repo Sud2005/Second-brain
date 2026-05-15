@@ -1,0 +1,102 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# second-brain / docker-compose.yml
+# Phase 1 stack: API + Celery Worker + Redis
+#
+# USAGE:
+#   docker compose up --build        ← start everything
+#   docker compose up --build -d     ← start in background
+#   docker compose logs -f api       ← follow API logs
+#   docker compose logs -f worker    ← follow worker logs
+#   docker compose down              ← stop everything
+#   docker compose down -v           ← stop + delete volumes (wipes storage!)
+#
+# SERVICES:
+#   redis   — message broker for the task queue
+#   api     — FastAPI server (port 8000)
+#   worker  — Celery worker, processes OCR / transcription tasks
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: "3.9"
+
+services:
+
+  # ── Redis ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: brain_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── FastAPI (Ingestion API) ────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: brain_api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - STORAGE_PATH=/app/storage/uploads
+      - WATCH_FOLDER=/app/watched_inbox
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+    volumes:
+      - ./storage:/app/storage          # persist captured files
+      - ./watched_inbox:/app/watched_inbox
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Celery Worker ─────────────────────────────────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: brain_worker
+    restart: unless-stopped
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - STORAGE_PATH=/app/storage/uploads
+    volumes:
+      - ./storage:/app/storage
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: celery -A task_queue.tasks worker --loglevel=info --concurrency=2
+
+  # ── Flower (Celery dashboard — optional but useful) ────────────────────────
+  flower:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: brain_flower
+    restart: unless-stopped
+    ports:
+      - "5555:5555"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+      - worker
+    command: celery -A task_queue.tasks flower --port=5555
+    profiles:
+      - monitoring   # only starts with: docker compose --profile monitoring up
+
+volumes:
+  redis_data:
