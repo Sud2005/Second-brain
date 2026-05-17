@@ -140,13 +140,7 @@ def _extract_with_llm(text: str, item_id: str) -> list[Entity]:
     Use OpenAI to extract CONCEPT and TECHNOLOGY entities
     that spaCy typically misses.
     """
-    if not settings.openai_api_key:
-        return []
-
     try:
-        from openai import OpenAI
-        client = OpenAI(api_key=settings.openai_api_key)
-
         prompt = f"""Extract key concepts and technologies mentioned in this text.
 Return ONLY a JSON array of objects, each with "text" and "label" fields.
 Label must be exactly "CONCEPT" or "TECHNOLOGY".
@@ -162,14 +156,32 @@ Text:
 
 Respond ONLY with the JSON array, no markdown fences:"""
 
-        resp = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.1,
-            max_tokens=500,
-        )
-
-        raw = resp.choices[0].message.content.strip()
+        if settings.summariser_provider.lower() == "ollama":
+            import requests
+            resp = requests.post(
+                f"{settings.ollama_base_url}/api/chat",
+                json={
+                    "model": settings.summariser_model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "stream": False,
+                    "format": "json"
+                },
+                timeout=120
+            )
+            resp.raise_for_status()
+            raw = resp.json()["message"]["content"].strip()
+        else:
+            if not settings.openai_api_key:
+                return []
+            from openai import OpenAI
+            client = OpenAI(api_key=settings.openai_api_key)
+            resp = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+                max_tokens=500,
+            )
+            raw = resp.choices[0].message.content.strip()
         # Strip markdown fences if present
         if raw.startswith("```"):
             raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]

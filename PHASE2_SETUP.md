@@ -8,8 +8,7 @@
 
 - Python 3.10+
 - Docker Desktop (for Neo4j + Qdrant + Redis)
-- An OpenAI API key (for embeddings + summarisation)
-- Optionally: Anthropic API key (for Claude-based summarisation)
+- **Ollama** installed on your machine (for 100% free, local AI)
 
 ---
 
@@ -23,13 +22,18 @@ venv\Scripts\activate          # Windows
 pip install -r requirements.txt
 ```
 
-## Step 2: Download spaCy Model
+## Step 2: Download Models
 
+First, download the spaCy model for standard entity extraction:
 ```bash
 python -m spacy download en_core_web_sm
 ```
 
-> For better entity extraction (if you have GPU), use: `python -m spacy download en_core_web_trf`
+Next, make sure you have installed [Ollama](https://ollama.com/), open a new terminal, and download the free local LLMs:
+```bash
+ollama pull llama3.2          # For generating summaries and concepts (3GB)
+ollama pull nomic-embed-text  # For generating vector embeddings (270MB)
+```
 
 ## Step 3: Start Infrastructure (Docker)
 
@@ -63,11 +67,7 @@ Open http://localhost:6333/dashboard in your browser.
 cp .env.example .env
 ```
 
-Edit `.env` and set your API keys:
-```
-OPENAI_API_KEY=sk-your-key-here
-# ANTHROPIC_API_KEY=sk-ant-your-key-here   # optional
-```
+By default, the `.env.example` is now configured to point to your local Ollama server (`http://localhost:11434`) for both summarisation and embeddings! No paid API keys are required.
 
 ## Step 5: Start the Application
 

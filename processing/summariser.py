@@ -48,6 +48,25 @@ Respond ONLY in this JSON format:
 
 # ── LLM call implementations ─────────────────────────────────────────────────
 
+def _call_ollama(text: str) -> dict:
+    import requests
+    resp = requests.post(
+        f"{settings.ollama_base_url}/api/chat",
+        json={
+            "model": settings.summariser_model,
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": f"Content to distill:\n\n{text[:4000]}"}
+            ],
+            "stream": False,
+            "format": "json"
+        },
+        timeout=120
+    )
+    resp.raise_for_status()
+    raw = resp.json()["message"]["content"].strip()
+    return json.loads(raw)
+
 def _call_openai(text: str) -> dict:
     """Call OpenAI chat completions API."""
     from openai import OpenAI
@@ -119,7 +138,9 @@ def summarise(item: IngestionItem) -> dict | None:
         return None
 
     try:
-        if provider == "anthropic":
+        if provider == "ollama":
+            card = _call_ollama(text)
+        elif provider == "anthropic":
             card = _call_anthropic(text)
         else:
             card = _call_openai(text)

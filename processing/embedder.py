@@ -21,6 +21,7 @@ from typing import Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import requests
 import tiktoken
 from openai import OpenAI
 from qdrant_client import QdrantClient
@@ -122,23 +123,28 @@ def embed_text(text: str) -> list[float]:
         return [0.0] * settings.embedding_dim
 
     chunks = _chunk_text(text)
-    client = _get_openai()
+    if settings.embedding_provider.lower() == "ollama":
+        all_embeddings = []
+        for chunk in chunks:
+            resp = requests.post(
+                f"{settings.ollama_base_url}/api/embeddings",
+                json={"model": settings.embedding_model, "prompt": chunk},
+                timeout=120
+            )
+            resp.raise_for_status()
+            all_embeddings.append(resp.json()["embedding"])
+    else:
+        client = _get_openai()
+        all_embeddings = []
+        for chunk in chunks:
+            resp = client.embeddings.create(
+                input=chunk,
+                model=settings.embedding_model,
+            )
+            all_embeddings.append(resp.data[0].embedding)
 
     if len(chunks) == 1:
-        resp = client.embeddings.create(
-            input=chunks[0],
-            model=settings.embedding_model,
-        )
-        return resp.data[0].embedding
-
-    # Multiple chunks: embed each, then mean-pool
-    all_embeddings = []
-    for chunk in chunks:
-        resp = client.embeddings.create(
-            input=chunk,
-            model=settings.embedding_model,
-        )
-        all_embeddings.append(resp.data[0].embedding)
+        return all_embeddings[0]
 
     # Mean pool across all chunk embeddings
     dim = len(all_embeddings[0])

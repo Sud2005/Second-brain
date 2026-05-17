@@ -25,9 +25,10 @@ class Settings(BaseSettings):
     api_port: int = Field(8000, alias="API_PORT")
     api_secret_key: str = Field("dev-secret", alias="API_SECRET_KEY")
 
-    # ── LLM Keys ──────────────────────────────────────────────
+    # ── LLM Keys & URLs ───────────────────────────────────────
     anthropic_api_key: str = Field("", alias="ANTHROPIC_API_KEY")
     openai_api_key: str = Field("", alias="OPENAI_API_KEY")
+    ollama_base_url: str = Field("http://localhost:11434", alias="OLLAMA_BASE_URL")
 
     # ── OCR ───────────────────────────────────────────────────
     tesseract_cmd: str = Field("", alias="TESSERACT_CMD")
@@ -46,12 +47,13 @@ class Settings(BaseSettings):
     qdrant_collection: str = Field("second_brain_items", alias="QDRANT_COLLECTION")
 
     # ── Embeddings (Phase 2) ──────────────────────────────────
-    embedding_model: str = Field("text-embedding-3-small", alias="EMBEDDING_MODEL")
-    embedding_dim: int = Field(1536, alias="EMBEDDING_DIM")
+    embedding_provider: str = Field("ollama", alias="EMBEDDING_PROVIDER") # ollama | openai
+    embedding_model: str = Field("nomic-embed-text", alias="EMBEDDING_MODEL")
+    embedding_dim: int = Field(768, alias="EMBEDDING_DIM")
 
     # ── Summariser LLM (Phase 2) ──────────────────────────────
-    summariser_provider: str = Field("openai", alias="SUMMARISER_PROVIDER")  # openai | anthropic
-    summariser_model: str = Field("gpt-4o-mini", alias="SUMMARISER_MODEL")
+    summariser_provider: str = Field("ollama", alias="SUMMARISER_PROVIDER")  # ollama | openai | anthropic
+    summariser_model: str = Field("llama3.2", alias="SUMMARISER_MODEL")
 
     model_config = {"env_file": ".env", "populate_by_name": True}
 
