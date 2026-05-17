@@ -112,3 +112,55 @@ class IngestResponse(BaseModel):
     item_id: str
     status: Status
     message: str
+
+
+# ── Phase 2: Entity extraction models ────────────────────────────────────────
+
+class Entity(BaseModel):
+    """
+    A named entity extracted from an IngestionItem.
+    Used by entity_extractor.py and graph_writer.py.
+    """
+    text: str                       # e.g. "GraphRAG", "Transformer", "OpenAI"
+    label: str                      # PERSON | ORG | GPE | CONCEPT | TECHNOLOGY | DATE | EVENT
+    salience: float = 0.5           # 0.0–1.0 — how central to the item
+    source_item_id: str             # which item this was extracted from
+
+
+# ── Phase 2: Search / retrieval models ───────────────────────────────────────
+
+class SearchResult(BaseModel):
+    """A single search result from the KAG retriever (graph + vector fusion)."""
+    item_id: str
+    title: str | None = None
+    summary: str | None = None
+    score: float
+    matched_via: list[str] = Field(default_factory=list)   # ["vector", "entity:GraphRAG", ...]
+    excerpt: str = ""                                       # 200 char snippet
+
+
+class SearchResponse(BaseModel):
+    """Full search response envelope — consumed by the Phase 3 graph UI."""
+    results: list[SearchResult]
+    query_entities: list[str] = Field(default_factory=list)
+    total: int = 0
+
+
+# ── Phase 2: Graph visualization models (served by /graph endpoints) ─────────
+
+class GraphNode(BaseModel):
+    id: str
+    label: str | None = None
+    type: str = "item"              # "item" | "entity"
+    community_id: int | None = None
+    score: float | None = None
+
+class GraphEdge(BaseModel):
+    source: str
+    target: str
+    relation: str = "RELATED_TO"    # MENTIONS | RELATED_TO | CO_OCCURS_WITH
+    weight: float = 1.0
+
+class GraphNeighborsResponse(BaseModel):
+    nodes: list[GraphNode]
+    edges: list[GraphEdge]

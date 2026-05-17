@@ -1,9 +1,9 @@
 """
 second_brain/api/main.py
 ────────────────────────
-The FastAPI application — the HTTP brain of Phase 1.
+The FastAPI application — the HTTP brain of Second Brain.
 
-ENDPOINTS:
+PHASE 1 ENDPOINTS:
   POST /ingest/thought      ← quick text capture (CLI, mobile webhook)
   POST /ingest/url          ← URL / webpage clip
   POST /ingest/chat         ← AI conversation import
@@ -13,6 +13,11 @@ ENDPOINTS:
   GET  /health              ← is the API alive?
   GET  /stats               ← ingestion counts by type/status
 
+PHASE 2 ENDPOINTS:
+  GET  /search              ← KAG retriever (fused graph + vector search)
+  GET  /graph/neighbors/{id}← graph neighborhood for visualization
+  GET  /communities         ← GraphRAG community summaries
+
 HOW A REQUEST FLOWS:
   HTTP Request
     → FastAPI validates the body (Pydantic model)
@@ -21,8 +26,9 @@ HOW A REQUEST FLOWS:
     → Returns 202 Accepted immediately
   Meanwhile, in the background:
     → Celery worker picks up the item
-    → Runs OCR / transcription / text extraction
-    → Updates the item on disk with extracted_text + status=DONE
+    → Phase 1: Runs OCR / transcription / text extraction
+    → Phase 2: Summarise → Extract entities → Embed → Write graph
+    → Updates the item on disk with all enrichments + status=DONE
 """
 
 import shutil
@@ -33,7 +39,7 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -41,15 +47,17 @@ from config import settings
 from models import (
     IngestionItem, SourceType, Status,
     ThoughtRequest, URLRequest, ChatImportRequest, IngestResponse,
+    SearchResponse, GraphNeighborsResponse,
 )
 from storage.store import save_item, load_item, list_items, all_items_full
 
 # ── App init ──────────────────────────────────────────────────────────────────
 
 app = FastAPI(
-    title="Second Brain — Ingestion API",
-    description="Phase 1: Universal intake layer. Every thought, screenshot, video, and conversation lands here.",
-    version="0.1.0",
+    title="Second Brain — API",
+    description="Phase 1+2: Universal intake layer + intelligence pipeline. "
+                "Captures, processes, embeds, and graphs everything.",
+    version="0.2.0",
 )
 
 app.add_middleware(
@@ -81,7 +89,7 @@ def _process_inline(item_id: str):
     _proc(item_id)
 
 
-# ── Routes ────────────────────────────────────────────────────────────────────
+# ── Phase 1 Routes ───────────────────────────────────────────────────────────
 
 @app.get("/health")
 def health():
@@ -220,6 +228,84 @@ def get_item(item_id: str):
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     return item
+
+
+# ── Phase 2: Search (KAG Retriever) ──────────────────────────────────────────
+
+@app.get("/search", response_model=SearchResponse)
+def search_items(
+    q: str = Query(..., min_length=1, description="Natural language search query"),
+    limit: int = Query(5, ge=1, le=50, description="Max results to return"),
+):
+    """
+    Fused graph + vector search (Knowledge-Augmented Generation).
+    
+    Query flow:
+      1. Embed query → vector search Qdrant (top-k)
+      2. Extract entities from query → graph traversal Neo4j  
+      3. Merge: score = 0.6 * vector_score + 0.4 * graph_score
+      4. Return top results with explanations
+    """
+    try:
+        from processing.kag_retriever import search
+        return search(q, limit=limit)
+    except Exception as e:
+        # Graceful degradation: return empty results on failure
+        return SearchResponse(results=[], query_entities=[], total=0)
+
+
+# ── Phase 2: Graph Neighbors ─────────────────────────────────────────────────
+
+@app.get("/graph/neighbors/{item_id}", response_model=GraphNeighborsResponse)
+def graph_neighbors(
+    item_id: str,
+    depth: int = Query(2, ge=1, le=4, description="Traversal depth"),
+):
+    """
+    Get an item's neighborhood in the knowledge graph.
+    Returns nodes + edges for the Phase 3 graph visualization UI.
+    """
+    # Verify item exists
+    item = load_item(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    try:
+        from processing.graph_writer import get_neighbors
+        return get_neighbors(item_id, depth=depth)
+    except Exception as e:
+        return GraphNeighborsResponse(nodes=[], edges=[])
+
+
+# ── Phase 2: GraphRAG Communities ─────────────────────────────────────────────
+
+@app.get("/communities")
+def get_communities():
+    """
+    Return GraphRAG community summaries.
+    Communities are clusters of related items detected via shared entities.
+    """
+    try:
+        from processing.graphrag_runner import get_all_communities
+        communities = get_all_communities()
+        return {"communities": communities, "total": len(communities)}
+    except Exception as e:
+        return {"communities": [], "total": 0}
+
+
+@app.get("/communities/{community_id}")
+def get_community(community_id: int):
+    """Get a specific community by ID."""
+    try:
+        from processing.graphrag_runner import get_community_summary
+        community = get_community_summary(community_id)
+        if not community:
+            raise HTTPException(status_code=404, detail="Community not found")
+        return community
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ── Dev runner ────────────────────────────────────────────────────────────────

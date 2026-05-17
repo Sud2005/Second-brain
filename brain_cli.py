@@ -199,9 +199,56 @@ def stats():
     ))
 
 
+# ── Search (Phase 2) ──────────────────────────────────────────────────────────
+
+@app.command()
+def search(
+    query: str = typer.Argument(..., help="Natural language search query."),
+    limit: int = typer.Option(5, "--limit", "-n", help="Max results."),
+):
+    """Search your brain using fused graph + vector retrieval."""
+    data = _api("GET", "/search", params={"q": query, "limit": limit})
+
+    query_ents = data.get("query_entities", [])
+    if query_ents:
+        console.print(f"[dim]Entities detected: {', '.join(query_ents)}[/dim]\n")
+
+    results = data.get("results", [])
+    if not results:
+        console.print("[yellow]No results found.[/yellow]")
+        return
+
+    for i, r in enumerate(results, 1):
+        score = r.get("score", 0)
+        title = r.get("title") or "Untitled"
+        summary = r.get("summary") or ""
+        excerpt = r.get("excerpt", "")[:150]
+        matched = ", ".join(r.get("matched_via", []))
+
+        # Color-code by score
+        if score >= 0.7:
+            score_color = "green"
+        elif score >= 0.4:
+            score_color = "yellow"
+        else:
+            score_color = "dim"
+
+        console.print(Panel(
+            f"[bold]Score:[/bold]   [{score_color}]{score:.4f}[/{score_color}]\n"
+            f"[bold]Title:[/bold]   {title}\n"
+            f"[bold]Match:[/bold]   [dim]{matched}[/dim]\n"
+            + (f"[bold]Summary:[/bold] {summary}\n" if summary else "")
+            + f"[bold]Excerpt:[/bold] [dim]{excerpt}...[/dim]",
+            title=f"[cyan]#{i}[/cyan]",
+            border_style="cyan" if score >= 0.5 else "dim",
+        ))
+
+    console.print(f"\n[dim]{data.get('total', 0)} results found.[/dim]")
+
+
 if __name__ == "__main__":
     # Magic trick: if the user types `brain "my thought"`, we auto-inject the `think` command
-    known_commands = {"think", "url", "chat", "list", "show", "stats", "--help", "-h"}
+    known_commands = {"think", "url", "chat", "list", "show", "stats", "search", "--help", "-h"}
     if len(sys.argv) > 1 and sys.argv[1] not in known_commands and not sys.argv[1].startswith("-"):
         sys.argv.insert(1, "think")
         
