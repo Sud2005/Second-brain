@@ -1,0 +1,108 @@
+.timeline {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+  padding: 20px;
+}
+
+.timeline__controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+
+.timeline__play-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--border-bright);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  color: var(--accent-green);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.timeline__play-btn:hover:not(:disabled) {
+  background: rgba(0, 255, 178, 0.1);
+  border-color: rgba(0, 255, 178, 0.3);
+}
+
+.timeline__play-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.timeline__scrubber {
+  flex: 1;
+  -webkit-appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-elevated);
+  outline: none;
+}
+
+.timeline__scrubber::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent-green);
+  cursor: pointer;
+  box-shadow: 0 0 8px rgba(0, 255, 178, 0.4);
+}
+
+.timeline__count {
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.timeline__canvas {
+  flex: 1;
+  position: relative;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.timeline__lanes {
+  position: relative;
+  min-width: 100%;
+  min-height: 100px;
+}
+
+.timeline__node {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.timeline__node:hover {
+  transform: translate(-50%, -50%) scale(1.8);
+  z-index: 10;
+}
+
+.timeline__node--selected {
+  transform: translate(-50%, -50%) scale(2);
+  box-shadow: 0 0 0 3px #ffffff, 0 0 20px currentColor !important;
+  z-index: 20;
+}
+
+.timeline__axis {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 10px;
+  color: var(--text-dim);
+}

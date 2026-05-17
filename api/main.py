@@ -218,7 +218,13 @@ async def ingest_file(file: UploadFile = File(...)):
 def get_items(limit: int = 50, status: str | None = None):
     """List captured items, newest first."""
     status_filter = Status(status) if status else None
-    return list_items(limit=limit, status=status_filter)
+    items = list_items(limit=limit, status=status_filter)
+    # Ensure every item has an id (older index entries may lack one)
+    for item in items:
+        if 'id' not in item and 'path' in item:
+            # Extract id from path: storage/items/<uuid>.json
+            item['id'] = Path(item['path']).stem
+    return items
 
 
 @app.get("/items/{item_id}")

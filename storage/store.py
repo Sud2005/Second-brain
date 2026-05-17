@@ -52,6 +52,7 @@ def save_item(item: IngestionItem) -> Path:
     # Update index
     index = _load_index()
     index[item.id] = {
+        "id": item.id,
         "path": str(item_file),
         "status": item.status,
         "source_type": item.source_type,

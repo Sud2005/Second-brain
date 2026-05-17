@@ -1,0 +1,43 @@
+.view-switcher {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-glass);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.view-switcher__btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.view-switcher__btn:hover {
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+}
+
+.view-switcher__btn--active {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-bright);
+}
+
+.view-switcher__icon {
+  font-size: 10px;
+}
+
+.view-switcher__label {
+  font-size: 11px;
+}

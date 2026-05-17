@@ -162,7 +162,24 @@ services:
     profiles:
       - monitoring   # only starts with: docker compose --profile monitoring up
 
+  # ── Frontend (Phase 3 — React Graph UI) ──────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.frontend
+    container_name: brain_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    volumes:
+      - ./frontend/src:/app/src
+    depends_on:
+      - api
+
 volumes:
   redis_data:
   neo4j_data:
   qdrant_data:
+
