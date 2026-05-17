@@ -210,11 +210,11 @@ def search_vectors(query_embedding: list[float], limit: int = 10) -> list[dict]:
     """
     try:
         qdrant = _get_qdrant()
-        results = qdrant.search(
+        results = qdrant.query_points(
             collection_name=settings.qdrant_collection,
-            query_vector=query_embedding,
+            query=query_embedding,
             limit=limit,
-        )
+        ).points
         return [
             {
                 "item_id": hit.id,

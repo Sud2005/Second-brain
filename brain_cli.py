@@ -47,7 +47,7 @@ API_BASE = f"http://localhost:{settings.api_port}"
 def _api(method: str, path: str, **kwargs):
     """Tiny wrapper around httpx with friendly error handling."""
     try:
-        resp = httpx.request(method, f"{API_BASE}{path}", timeout=10, **kwargs)
+        resp = httpx.request(method, f"{API_BASE}{path}", timeout=120, **kwargs)
         resp.raise_for_status()
         return resp.json()
     except httpx.ConnectError:
