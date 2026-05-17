@@ -24,6 +24,10 @@ import os
 from pathlib import Path
 from typing import Optional
 
+# Force UTF-8 for Windows console (fixes UnicodeEncodeError for checkmarks)
+if sys.stdout.encoding.lower() != 'utf-8' and hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import typer
@@ -195,21 +199,10 @@ def stats():
     ))
 
 
-# ── Default: if called with a bare string, treat as thought ──────────────────
-
-@app.callback(invoke_without_command=True)
-def default(
-    ctx: typer.Context,
-    content: Optional[str] = typer.Argument(None),
-    tag: list[str] = typer.Option([], "--tag", "-t"),
-):
-    """Capture a thought (default when no subcommand given)."""
-    if ctx.invoked_subcommand is None:
-        if content:
-            think(content=content, tag=tag)
-        else:
-            console.print(ctx.get_help())
-
-
 if __name__ == "__main__":
+    # Magic trick: if the user types `brain "my thought"`, we auto-inject the `think` command
+    known_commands = {"think", "url", "chat", "list", "show", "stats", "--help", "-h"}
+    if len(sys.argv) > 1 and sys.argv[1] not in known_commands and not sys.argv[1].startswith("-"):
+        sys.argv.insert(1, "think")
+        
     app()

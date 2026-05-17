@@ -19,6 +19,7 @@ TASKS DEFINED HERE:
 
 import sys
 import os
+import platform
 
 # Make sure we can import from project root
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -36,7 +37,7 @@ celery_app = Celery(
     backend=settings.redis_url,
 )
 
-celery_app.conf.update(
+_celery_conf = dict(
     task_serializer="json",
     result_serializer="json",
     accept_content=["json"],
@@ -46,6 +47,12 @@ celery_app.conf.update(
     task_acks_late=True,
     task_reject_on_worker_lost=True,
 )
+
+# ── Windows fix: prefork pool is not supported, use 'solo' instead ────────────
+if platform.system() == "Windows":
+    _celery_conf["worker_pool"] = "solo"
+
+celery_app.conf.update(**_celery_conf)
 
 
 # ── Helper: lazy imports to keep startup fast ─────────────────────────────────
@@ -62,6 +69,12 @@ def process_item(self, item_id: str):
     """
     Entry point for ALL items.
     Reads the item's source_type and routes to the right processor.
+
+    IMPORTANT: We call _do_ocr / _do_transcribe / _do_extract (plain functions)
+    instead of calling the Celery task objects directly. If we called
+    ocr_screenshot(item_id) here, Celery would try to dispatch it as
+    a NEW task onto Redis, which is NOT what we want — we want to run
+    the processing code right here in the same worker.
     """
     load_item, update_status, _, _ = _get_store()
 
@@ -73,12 +86,12 @@ def process_item(self, item_id: str):
 
     try:
         if item.source_type == SourceType.SCREENSHOT:
-            result = ocr_screenshot(item_id)
+            result = _do_ocr(item_id)
         elif item.source_type in (SourceType.VIDEO, SourceType.AUDIO):
-            result = transcribe_audio(item_id)
+            result = _do_transcribe(item_id)
         else:
             # THOUGHT, AI_CHAT, URL, DOCUMENT with embedded text
-            result = extract_text(item_id)
+            result = _do_extract(item_id)
 
         update_status(item_id, Status.DONE)
         return result
@@ -89,13 +102,12 @@ def process_item(self, item_id: str):
         raise self.retry(exc=exc, countdown=2 ** self.request.retries)
 
 
-# ── OCR processor ─────────────────────────────────────────────────────────────
+# ── Processing functions (plain Python — called directly by the dispatcher) ───
 
-@celery_app.task(name="ocr_screenshot")
-def ocr_screenshot(item_id: str) -> dict:
+def _do_ocr(item_id: str) -> dict:
     """
     Extract text from a screenshot or image using Tesseract OCR.
-    
+
     Tesseract reads pixels → returns a string of detected text.
     We store that back onto the IngestionItem.
     """
@@ -125,13 +137,10 @@ def ocr_screenshot(item_id: str) -> dict:
     return {"item_id": item_id, "chars_extracted": len(cleaned)}
 
 
-# ── Audio/Video transcription (stub — full Whisper in Phase 2) ───────────────
-
-@celery_app.task(name="transcribe_audio")
-def transcribe_audio(item_id: str) -> dict:
+def _do_transcribe(item_id: str) -> dict:
     """
     Transcribe audio/video using OpenAI Whisper.
-    
+
     Phase 1: stores a placeholder so the pipeline doesn't break.
     Phase 2: uncomment the whisper block below.
     """
@@ -153,10 +162,7 @@ def transcribe_audio(item_id: str) -> dict:
     return {"item_id": item_id, "note": "Whisper stub — enable in Phase 2"}
 
 
-# ── Plain text extractor ──────────────────────────────────────────────────────
-
-@celery_app.task(name="extract_text")
-def extract_text(item_id: str) -> dict:
+def _do_extract(item_id: str) -> dict:
     """
     Handle items that already have text (THOUGHT, AI_CHAT, URL).
     Right now: just copies raw_content to extracted_text.
@@ -171,3 +177,21 @@ def extract_text(item_id: str) -> dict:
     text = item.raw_content or ""
     update_extracted_text(item_id, text)
     return {"item_id": item_id, "chars": len(text)}
+
+
+# ── Celery task wrappers (so these can also be called independently via .delay)
+
+@celery_app.task(name="ocr_screenshot")
+def ocr_screenshot(item_id: str) -> dict:
+    return _do_ocr(item_id)
+
+
+@celery_app.task(name="transcribe_audio")
+def transcribe_audio(item_id: str) -> dict:
+    return _do_transcribe(item_id)
+
+
+@celery_app.task(name="extract_text")
+def extract_text(item_id: str) -> dict:
+    return _do_extract(item_id)
+

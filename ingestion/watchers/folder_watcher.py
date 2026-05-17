@@ -43,7 +43,9 @@ WATCHED_EXTENSIONS = {
     ".pdf", ".docx", ".txt", ".md",              # documents
 }
 
-API_BASE = f"http://{settings.api_host}:{settings.api_port}"
+# 0.0.0.0 is a bind address, not a routable client address on Windows
+_host = "localhost" if settings.api_host == "0.0.0.0" else settings.api_host
+API_BASE = f"http://{_host}:{settings.api_port}"
 
 
 class BrainInboxHandler(FileSystemEventHandler):
