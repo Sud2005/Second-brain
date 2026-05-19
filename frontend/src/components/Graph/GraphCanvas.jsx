@@ -1,6 +1,6 @@
 import { useRef, useMemo, useEffect, useCallback, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, Stars, Html, Billboard, Text } from '@react-three/drei';
+import { OrbitControls, Stars, Billboard, Text } from '@react-three/drei';
 import {
   forceSimulation,
   forceLink,
@@ -20,9 +20,9 @@ function useForceLayout(nodes, edges) {
 
     const simNodes = nodes.map(n => ({
       id: n.id,
-      x: (Math.random() - 0.5) * 100,
-      y: (Math.random() - 0.5) * 100,
-      z: (Math.random() - 0.5) * 100,
+      x: (Math.random() - 0.5) * 80,
+      y: (Math.random() - 0.5) * 80,
+      z: (Math.random() - 0.5) * 80,
     }));
 
     const nodeIndex = {};
@@ -36,14 +36,14 @@ function useForceLayout(nodes, edges) {
       }));
 
     const sim = forceSimulation(simNodes, 3)
-      .force('link', forceLink(simLinks).distance(30).strength(0.3))
-      .force('charge', forceManyBody().strength(-60))
+      .force('link', forceLink(simLinks).distance(20).strength(0.3))
+      .force('charge', forceManyBody().strength(-40))
       .force('center', forceCenter(0, 0, 0))
       .alpha(1)
-      .alphaDecay(0.02);
+      .alphaDecay(0.03);
 
     // Run simulation synchronously for initial layout
-    for (let i = 0; i < 120; i++) sim.tick();
+    for (let i = 0; i < 80; i++) sim.tick();
 
     const pos = {};
     simNodes.forEach(n => {
@@ -63,27 +63,31 @@ function GraphNode3D({ node, position, isSelected, isHovered, isFaded, onSelect,
   const meshRef = useRef();
   const glowRef = useRef();
   const isItem = node.type === 'item';
-  const baseRadius = isItem ? Math.max(0.8, Math.min(2.5, 0.8 + node.connectionCount * 0.15)) : 0.5;
+
+  // MUCH bigger nodes — items are 2-5 radius, entities are 1.5
+  const baseRadius = isItem
+    ? Math.max(2.0, Math.min(5.0, 2.0 + (node.connectionCount || 0) * 0.4))
+    : 1.5;
   const color = new THREE.Color(node.color || '#333');
 
   useFrame((state) => {
     if (!meshRef.current) return;
-    const scale = isHovered ? 1.3 : isSelected ? 1.15 : 1;
-    meshRef.current.scale.lerp(new THREE.Vector3(scale, scale, scale), 0.1);
+    const scale = isHovered ? 1.4 : isSelected ? 1.2 : 1;
+    meshRef.current.scale.lerp(new THREE.Vector3(scale, scale, scale), 0.15);
 
     if (glowRef.current) {
       glowRef.current.material.opacity = isSelected
-        ? 0.3 + Math.sin(state.clock.elapsedTime * 3) * 0.15
-        : isHovered ? 0.2 : 0;
+        ? 0.35 + Math.sin(state.clock.elapsedTime * 3) * 0.15
+        : isHovered ? 0.25 : 0.08;
     }
   });
 
   return (
     <group position={position}>
-      {/* Glow halo */}
+      {/* Glow halo — always slightly visible */}
       <mesh ref={glowRef}>
         <sphereGeometry args={[baseRadius * 2.5, 16, 16]} />
-        <meshBasicMaterial color={color} transparent opacity={0} side={THREE.BackSide} />
+        <meshBasicMaterial color={color} transparent opacity={0.08} side={THREE.BackSide} />
       </mesh>
 
       {/* Main node */}
@@ -100,24 +104,25 @@ function GraphNode3D({ node, position, isSelected, isHovered, isFaded, onSelect,
         <meshStandardMaterial
           color={color}
           emissive={color}
-          emissiveIntensity={isFaded ? 0.05 : isSelected ? 0.8 : isHovered ? 0.6 : 0.35}
+          emissiveIntensity={isFaded ? 0.05 : isSelected ? 1.0 : isHovered ? 0.7 : 0.45}
           transparent
-          opacity={isFaded ? 0.1 : 1}
+          opacity={isFaded ? 0.12 : 1}
           roughness={0.3}
           metalness={0.6}
         />
       </mesh>
 
-      {/* Label billboard — only when hovered or selected */}
+      {/* Label billboard — only when hovered or selected, no custom font */}
       {(isHovered || isSelected) && (
-        <Billboard position={[0, baseRadius + 1.2, 0]}>
+        <Billboard position={[0, baseRadius + 2, 0]}>
           <Text
-            fontSize={1}
+            fontSize={1.4}
             color="#ffffff"
             anchorX="center"
             anchorY="bottom"
-            font="/fonts/JetBrainsMono-Regular.ttf"
-            maxWidth={20}
+            maxWidth={25}
+            outlineWidth={0.08}
+            outlineColor="#000000"
           >
             {node.icon} {node.label?.slice(0, 40)}
           </Text>
@@ -201,18 +206,20 @@ function CameraAnimator({ targetPosition }) {
 
   useEffect(() => {
     if (targetPosition) {
+      // Place camera close to the node — only offset by 8 units
       targetRef.current = new THREE.Vector3(
-        targetPosition[0] + 15,
-        targetPosition[1] + 10,
-        targetPosition[2] + 15,
+        targetPosition[0] + 8,
+        targetPosition[1] + 5,
+        targetPosition[2] + 8,
       );
     }
   }, [targetPosition]);
 
   useFrame(() => {
     if (targetRef.current) {
-      camera.position.lerp(targetRef.current, 0.03);
-      if (camera.position.distanceTo(targetRef.current) < 0.5) {
+      // Fast lerp — reaches target in ~15-20 frames instead of 100+
+      camera.position.lerp(targetRef.current, 0.1);
+      if (camera.position.distanceTo(targetRef.current) < 0.3) {
         targetRef.current = null;
       }
     }
@@ -247,9 +254,9 @@ function SceneContent({ nodes, edges }) {
 
   return (
     <>
-      <ambientLight intensity={0.15} />
-      <pointLight position={[50, 50, 50]} intensity={0.4} color="#ffffff" />
-      <pointLight position={[-50, -30, -50]} intensity={0.2} color="#7B61FF" />
+      <ambientLight intensity={0.2} />
+      <pointLight position={[50, 50, 50]} intensity={0.5} color="#ffffff" />
+      <pointLight position={[-50, -30, -50]} intensity={0.3} color="#7B61FF" />
 
       <Stars radius={200} depth={100} count={2000} factor={3} saturation={0} fade speed={0.5} />
       <GridFloor />
@@ -285,7 +292,7 @@ function SceneContent({ nodes, edges }) {
       <OrbitControls
         makeDefault
         enableDamping
-        dampingFactor={0.05}
+        dampingFactor={0.08}
         minDistance={5}
         maxDistance={300}
       />
@@ -303,13 +310,13 @@ export default function GraphCanvas() {
   return (
     <div style={{ width: '100%', height: '100%' }}>
       <Canvas
-        camera={{ position: [60, 40, 60], fov: 60, near: 0.1, far: 1000 }}
+        camera={{ position: [35, 25, 35], fov: 60, near: 0.1, far: 1000 }}
         onPointerMissed={() => setSelectedNode(null)}
         gl={{ antialias: true, alpha: false }}
         style={{ background: '#050810' }}
       >
         <color attach="background" args={['#050810']} />
-        <fog attach="fog" args={['#050810', 100, 350]} />
+        <fog attach="fog" args={['#050810', 80, 300]} />
         <SceneContent nodes={nodes} edges={edges} />
       </Canvas>
     </div>

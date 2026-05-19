@@ -30,18 +30,27 @@ export default function Inspector() {
   const [itemDetail, setItemDetail] = useState(null);
   const [neighbors, setNeighbors] = useState([]);
   const [showRaw, setShowRaw] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const selectedNode = nodes.find(n => n.id === selectedNodeId);
 
   useEffect(() => {
-    if (!selectedNodeId) { setItemDetail(null); setNeighbors([]); return; }
+    if (!selectedNodeId) {
+      setItemDetail(null);
+      setNeighbors([]);
+      setLoading(false);
+      return;
+    }
 
-    // Fetch full item detail
+    setLoading(true);
+    setShowRaw(false);
+
+    // Fetch full item detail — fast, single GET
     getItem(selectedNodeId)
-      .then(setItemDetail)
-      .catch(() => setItemDetail(null));
+      .then(data => { setItemDetail(data); setLoading(false); })
+      .catch(() => { setItemDetail(null); setLoading(false); });
 
-    // Fetch neighbors
+    // Fetch neighbors in parallel — non-blocking
     getNeighbors(selectedNodeId, 1)
       .then(data => {
         const neighborNodes = (data.nodes || [])
@@ -57,12 +66,16 @@ export default function Inspector() {
       .catch(() => setNeighbors([]));
   }, [selectedNodeId]);
 
+  // Don't render if panel is closed or nothing selected
   if (!inspectorOpen || !selectedNodeId) return null;
 
-  const isItem = selectedNode?.type === 'item';
+  // Determine the display type from node OR from fetched detail
   const isEntity = selectedNode?.type === 'entity';
+  // Show as item if it's explicitly an item node, OR if we got item detail from the API
+  const isItem = selectedNode?.type === 'item' || (!isEntity && itemDetail);
 
   const memoryCard = itemDetail?.metadata?.memory_card || null;
+  const summary = itemDetail?.summary || itemDetail?.metadata?.summary || null;
   const timeAgo = itemDetail?.created_at
     ? formatDistanceToNow(new Date(itemDetail.created_at), { addSuffix: true })
     : '';
@@ -74,6 +87,11 @@ export default function Inspector() {
       </div>
 
       <div className="inspector__body">
+        {/* Loading state */}
+        {loading && !itemDetail && (
+          <div className="inspector__loading mono">Loading…</div>
+        )}
+
         {isItem && itemDetail && (
           <>
             {/* Title */}
@@ -94,7 +112,7 @@ export default function Inspector() {
             </div>
 
             {/* Time */}
-            <div className="inspector__time mono">{timeAgo}</div>
+            {timeAgo && <div className="inspector__time mono">{timeAgo}</div>}
 
             {/* Tags */}
             {itemDetail.tags?.length > 0 && (
@@ -103,6 +121,13 @@ export default function Inspector() {
                   <span key={i} className="pill">#{t}</span>
                 ))}
               </div>
+            )}
+
+            {/* Summary — show even if there's no memory card */}
+            {!memoryCard && summary && (
+              <blockquote className="inspector__summary">
+                "{summary}"
+              </blockquote>
             )}
 
             {/* Memory Card */}
