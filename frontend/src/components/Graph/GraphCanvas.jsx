@@ -251,18 +251,24 @@ function PlasmaEdges({ edges, positions, activeCommunityFilter, nodes }) {
 /* ── Camera animator ───────────────────────────────── */
 
 function CameraAnimator({ targetPosition }) {
-  const { camera } = useThree();
+  const { camera, controls } = useThree();
   const targetRef = useRef(null);
 
   useEffect(() => {
     if (targetPosition) {
+      // Comfortably offset so nodes look elegant and not cut off/too close
       targetRef.current = new THREE.Vector3(
-        targetPosition[0] + 8,
-        targetPosition[1] + 5,
-        targetPosition[2] + 8,
+        targetPosition[0] + 22,
+        targetPosition[1] + 14,
+        targetPosition[2] + 22,
       );
+
+      // Smoothly focus OrbitControls target on the selected node
+      if (controls) {
+        controls.target.set(targetPosition[0], targetPosition[1], targetPosition[2]);
+      }
     }
-  }, [targetPosition]);
+  }, [targetPosition, controls]);
 
   useFrame(() => {
     if (targetRef.current) {
