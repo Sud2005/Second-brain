@@ -9,8 +9,8 @@ import './Graph2D.css';
 */
 
 const COLORS = [
-  '#00FFB2', '#FF6B6B', '#7B61FF', '#FFB800',
-  '#00C8FF', '#FF9F43', '#A29BFE', '#FD79A8',
+  '#00FFD1', '#FF4B6E', '#A259FF', '#FFB800',
+  '#00A8FF', '#FF6B35', '#00FF8C', '#FF3CAC',
 ];
 
 export default function Graph2D() {
@@ -68,8 +68,11 @@ export default function Graph2D() {
     const cx = w / 2;
     const cy = h / 2;
 
-    ctx.fillStyle = '#050810';
+    ctx.fillStyle = '#00020A';
     ctx.fillRect(0, 0, w, h);
+
+    const nodeMap = {};
+    nodes.forEach(n => { nodeMap[n.id] = n; });
 
     // Draw edges
     edges.forEach(e => {
@@ -79,19 +82,35 @@ export default function Graph2D() {
       ctx.beginPath();
       ctx.moveTo(cx + sp.x, cy + sp.y);
       ctx.lineTo(cx + tp.x, cy + tp.y);
-      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
-      ctx.lineWidth = 0.5;
+      const relation = e.relation || 'RELATED_TO';
+      const sourceNode = nodeMap[e.source];
+      const edgeColor = sourceNode?.color || '#00D2FF';
+      if (relation === 'CO_OCCURS_WITH') {
+        ctx.setLineDash([4, 6]);
+      } else {
+        ctx.setLineDash([]);
+      }
+      if (relation === 'MENTIONS') {
+        ctx.strokeStyle = 'rgba(232, 244, 255, 0.18)';
+        ctx.lineWidth = 0.5;
+      } else {
+        ctx.strokeStyle = relation === 'RELATED_TO'
+          ? `${edgeColor}99`
+          : `${edgeColor}55`;
+        ctx.lineWidth = relation === 'RELATED_TO' ? 1 : 0.6;
+      }
       ctx.stroke();
     });
+    ctx.setLineDash([]);
 
     // Draw nodes
     nodes.forEach(n => {
       const p = posRef.current[n.id];
       if (!p) return;
 
-      const color = n.communityId != null
+      const color = n.color || (n.communityId != null
         ? COLORS[n.communityId % COLORS.length]
-        : '#333333';
+        : '#333333');
 
       const isFaded = activeCommunityFilter != null && n.communityId !== activeCommunityFilter;
       const isSelected = n.id === selectedNodeId;
@@ -111,15 +130,15 @@ export default function Graph2D() {
       // Node
       ctx.beginPath();
       ctx.arc(cx + p.x, cy + p.y, radius, 0, Math.PI * 2);
-      ctx.fillStyle = isFaded ? '#1a1a2e' : color;
+      ctx.fillStyle = isFaded ? '#0b1624' : color;
       ctx.fill();
 
       // Selection ring
       if (isSelected) {
         ctx.beginPath();
         ctx.arc(cx + p.x, cy + p.y, radius + 4, 0, Math.PI * 2);
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = '#00D2FF';
+        ctx.lineWidth = 1.2;
         ctx.stroke();
       }
     });

@@ -1,24 +1,31 @@
 import { useEffect, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
+import { motion } from 'framer-motion';
 import { getItem, getNeighbors } from '../../api/client';
 import useGraphStore from '../../store/graphStore';
 import MemoryCard from './MemoryCard';
 import RelatedNodes from './RelatedNodes';
+import { sourceIcon, Close, Node, Expand } from '../icons/Icons';
 import './Inspector.css';
 
-const ICONS = {
-  thought: '💭', screenshot: '📸', ai_chat: '🤖', url: '🔗',
-  video: '🎬', audio: '🎙', document: '📄',
+const LABEL_COLORS = {
+  CONCEPT: 'var(--node-2)',
+  TECHNOLOGY: 'var(--node-4)',
+  PERSON: 'var(--node-0)',
+  ORG: 'var(--node-3)',
+  GPE: 'var(--node-1)',
+  DATE: 'var(--text-secondary)',
+  EVENT: 'var(--node-5)',
 };
 
-const LABEL_COLORS = {
-  CONCEPT: 'var(--accent-purple)',
-  TECHNOLOGY: 'var(--accent-blue)',
-  PERSON: 'var(--accent-green)',
-  ORG: 'var(--accent-yellow)',
-  GPE: 'var(--accent-red)',
-  DATE: 'var(--text-secondary)',
-  EVENT: 'var(--community-5)',
+const panelVariants = {
+  hidden: { x: 40, opacity: 0 },
+  visible: {
+    x: 0,
+    opacity: 1,
+    transition: { duration: 0.22, ease: [0.2, 0.9, 0.2, 1] },
+  },
+  exit: { x: 60, opacity: 0, transition: { duration: 0.2, ease: [0.2, 0.9, 0.2, 1] } },
 };
 
 export default function Inspector() {
@@ -80,10 +87,31 @@ export default function Inspector() {
     ? formatDistanceToNow(new Date(itemDetail.created_at), { addSuffix: true })
     : '';
 
+  const SourceIcon = isItem && itemDetail ? sourceIcon(itemDetail.source_type) : Node;
+
   return (
-    <aside className="inspector glass-panel">
+    <motion.aside
+      className="inspector glass-panel"
+      variants={panelVariants}
+      initial="hidden"
+      animate="visible"
+      exit="exit"
+    >
       <div className="inspector__header">
-        <button className="inspector__close" onClick={() => setSelectedNode(null)}>✕</button>
+        <div className="inspector__header-info">
+          <span className="inspector__header-icon">
+            <SourceIcon size={16} />
+          </span>
+          <div className="inspector__header-text">
+            <span className="inspector__type mono uppercase">
+              {isItem && itemDetail ? itemDetail.source_type : selectedNode?.entityLabel || 'ENTITY'}
+            </span>
+            {timeAgo && <span className="inspector__timestamp mono uppercase">{timeAgo}</span>}
+          </div>
+        </div>
+        <button className="inspector__close" onClick={() => setSelectedNode(null)}>
+          <Close size={14} />
+        </button>
       </div>
 
       <div className="inspector__body">
@@ -102,18 +130,17 @@ export default function Inspector() {
             {/* Badges */}
             <div className="inspector__badges">
               <span className="pill">
-                {ICONS[itemDetail.source_type] || '📄'} {itemDetail.source_type}
+                <SourceIcon size={12} />
+                {itemDetail.source_type}
               </span>
               {itemDetail.platform && (
                 <span className="pill">{itemDetail.platform}</span>
               )}
               <span className={`status-dot status-dot--${itemDetail.status || 'pending'}`} />
-              <span className="secondary mono" style={{ fontSize: 11 }}>{itemDetail.status}</span>
+              <span className="secondary mono uppercase" style={{ fontSize: 10 }}>{itemDetail.status}</span>
             </div>
 
             {/* Time */}
-            {timeAgo && <div className="inspector__time mono">{timeAgo}</div>}
-
             {/* Tags */}
             {itemDetail.tags?.length > 0 && (
               <div className="inspector__tags">
@@ -125,7 +152,7 @@ export default function Inspector() {
 
             {/* Overview / Summary */}
             <div className="inspector__section">
-              <span className="inspector__section-label mono">Overview</span>
+              <span className="inspector__section-label mono uppercase">Memory Card</span>
               {memoryCard ? (
                 <MemoryCard card={memoryCard} />
               ) : summary ? (
@@ -145,22 +172,23 @@ export default function Inspector() {
             {/* Open original */}
             {(itemDetail.source_url || itemDetail.file_path) && (
               <a
-                className="inspector__open-btn mono"
+                className="inspector__open-btn mono uppercase"
                 href={itemDetail.source_url || `file://${itemDetail.file_path}`}
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                Open Original →
+                <Expand size={12} />
+                Open Original
               </a>
             )}
 
             {/* Raw text toggle */}
             <div className="inspector__section">
               <button
-                className="inspector__toggle mono"
+                className="inspector__toggle mono uppercase"
                 onClick={() => setShowRaw(!showRaw)}
               >
-                {showRaw ? '▾' : '▸'} Extracted Text
+                {showRaw ? 'Hide' : 'Show'} Raw Text
               </button>
               {showRaw && (
                 <pre className="inspector__raw mono">
@@ -184,21 +212,21 @@ export default function Inspector() {
             </div>
 
             {neighbors.length > 0 && (
-              <div className="inspector__section">
-                <span className="inspector__section-label mono">
-                  Appears in {neighbors.filter(n => n.type === 'item').length} items
-                </span>
-                <RelatedNodes neighbors={neighbors} />
-              </div>
+                <div className="inspector__section">
+                  <span className="inspector__section-label mono uppercase">
+                    Appears in {neighbors.filter(n => n.type === 'item').length} items
+                  </span>
+                  <RelatedNodes neighbors={neighbors} />
+                </div>
             )}
           </>
         )}
       </div>
 
       {/* Phase 4 placeholder */}
-      <div className="inspector__footer mono dim">
+      <div className="inspector__footer mono dim uppercase">
         Agent queue — coming in Phase 4
       </div>
-    </aside>
+    </motion.aside>
   );
 }

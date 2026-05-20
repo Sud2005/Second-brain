@@ -7,19 +7,15 @@ import useGraphStore from '../store/graphStore';
   and loads communities. Called once on mount, then by realtime hook.
 */
 
-const SOURCE_TYPE_ICONS = {
-  thought: '💭', screenshot: '📸', ai_chat: '🤖', url: '🔗',
-  video: '🎬', audio: '🎙', document: '📄',
-};
+const COMMUNITY_COLORS = [
+  '#00FFD1', '#FF4B6E', '#A259FF', '#FFB800',
+  '#00A8FF', '#FF6B35', '#00FF8C', '#FF3CAC',
+];
 
 // Deterministic community color
 function communityColor(id) {
   if (id == null) return '#333333';
-  const palette = [
-    '#00FFB2', '#FF6B6B', '#7B61FF', '#FFB800',
-    '#00C8FF', '#FF9F43', '#A29BFE', '#FD79A8',
-  ];
-  return palette[id % palette.length];
+  return COMMUNITY_COLORS[id % COMMUNITY_COLORS.length];
 }
 
 export default function useGraph() {
@@ -77,7 +73,6 @@ export default function useGraph() {
           label: item.title || item.raw_content?.slice(0, 50) || 'Untitled',
           type: 'item',
           sourceType: item.source_type,
-          icon: SOURCE_TYPE_ICONS[item.source_type] || '📄',
           communityId: cid,
           color: communityColor(cid),
           summary: item.summary || '',
@@ -104,7 +99,6 @@ export default function useGraph() {
               label: gn.label || gn.id,
               type: gn.type || 'entity',
               sourceType: null,
-              icon: '🔹',
               communityId: gn.community_id ?? null,
               color: communityColor(gn.community_id ?? null),
               connectionCount: 0,

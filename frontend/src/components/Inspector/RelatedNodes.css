@@ -5,9 +5,9 @@
 }
 
 .related-nodes__label {
-  font-size: 10px;
+  font-size: 9px;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.24em;
   color: var(--text-dim);
 }
 
@@ -21,35 +21,41 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 8px;
+  padding: 8px 10px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius);
   background: transparent;
   cursor: pointer;
   text-align: left;
-  transition: background 0.15s;
+  transition: background 0.2s var(--ease);
 }
 
 .related-node:hover {
-  background: var(--bg-surface);
+  background: rgba(0, 210, 255, 0.08);
 }
 
 .related-node__dot {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: var(--radius);
   flex-shrink: 0;
+}
+
+.related-node__icon {
+  color: var(--text-secondary);
 }
 
 .related-node__label {
   flex: 1;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
 }
 
 .related-node__type {
-  font-size: 10px;
+  font-size: 9px;
 }

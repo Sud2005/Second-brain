@@ -4,8 +4,8 @@ import useGraphStore from '../../store/graphStore';
 import './Timeline.css';
 
 const COLORS = [
-  '#00FFB2', '#FF6B6B', '#7B61FF', '#FFB800',
-  '#00C8FF', '#FF9F43', '#A29BFE', '#FD79A8',
+  '#00FFD1', '#FF4B6E', '#A259FF', '#FFB800',
+  '#00A8FF', '#FF6B35', '#00FF8C', '#FF3CAC',
 ];
 
 // Safe date formatter to prevent any RangeError crashes
@@ -85,11 +85,11 @@ export default function Timeline() {
     <div className="timeline">
       <div className="timeline__controls">
         <button
-          className="timeline__play-btn mono"
+          className="timeline__play-btn mono uppercase"
           onClick={() => setPlayback(true)}
           disabled={playback}
         >
-          {playback ? '▶ Playing...' : '▶ Play Growth'}
+          {playback ? 'Playing...' : 'Play Growth'}
         </button>
         <input
           type="range"
@@ -99,7 +99,7 @@ export default function Timeline() {
           value={visibleCount}
           onChange={e => setVisibleCount(Number(e.target.value))}
         />
-        <span className="timeline__count mono">
+        <span className="timeline__count mono uppercase">
           {visibleCount} / {sorted.length}
         </span>
       </div>
@@ -125,7 +125,7 @@ export default function Timeline() {
                   top: `${lane * 60 + 20}px`,
                   background: color,
                   boxShadow: `0 0 12px ${color}40`,
-                  animation: 'spawn 0.3s ease-out',
+                  animation: 'flicker-in 0.3s var(--ease)',
                 }}
                 onClick={() => setSelectedNode(item.id)}
                 title={`${item.title || 'Untitled'}\n${safeFormat(item.created_at, 'MMM d, yyyy')}`}

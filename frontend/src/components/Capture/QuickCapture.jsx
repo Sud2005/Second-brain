@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { ingestThought } from '../../api/client';
 import useGraphStore from '../../store/graphStore';
+import { Capture } from '../icons/Icons';
 import './QuickCapture.css';
 
 export default function QuickCapture() {
@@ -10,6 +11,7 @@ export default function QuickCapture() {
   const showToast = useGraphStore(s => s.showToast);
   const [value, setValue] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [success, setSuccess] = useState(false);
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -37,8 +39,12 @@ export default function QuickCapture() {
     try {
       await ingestThought(value.trim());
       showToast(`Captured: "${value.slice(0, 40)}..."`, 'success');
-      setValue('');
-      toggleQuickCapture();
+      setSuccess(true);
+      setTimeout(() => {
+        setSuccess(false);
+        setValue('');
+        toggleQuickCapture();
+      }, 450);
     } catch {
       showToast('Failed to capture thought.', 'error');
     } finally {
@@ -56,15 +62,20 @@ export default function QuickCapture() {
   return (
     <div className="quick-capture__backdrop" onClick={toggleQuickCapture}>
       <form
-        className="quick-capture glass-panel"
+        className={`quick-capture glass-panel ${success ? 'quick-capture--success' : ''}`}
         onSubmit={handleSubmit}
         onClick={(e) => e.stopPropagation()}
       >
+        <div className="quick-capture__header">
+          <span className="quick-capture__title mono">NEURAL INPUT</span>
+          <span className="quick-capture__hint mono">ESC TO CLOSE · TAB FOR FULL CAPTURE</span>
+        </div>
+        <div className="quick-capture__body">
         <input
           ref={inputRef}
           className="quick-capture__input mono"
           type="text"
-          placeholder="Capture a thought... (Tab for more options)"
+          placeholder="Capture a thought..."
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -75,8 +86,9 @@ export default function QuickCapture() {
           type="submit"
           disabled={submitting || !value.trim()}
         >
-          {submitting ? '...' : '↵'}
+          {submitting ? '...' : <><Capture size={14} /><span>ENTER</span></>}
         </button>
+        </div>
       </form>
     </div>
   );

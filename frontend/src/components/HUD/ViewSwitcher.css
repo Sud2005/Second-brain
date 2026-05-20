@@ -1,43 +1,35 @@
 .view-switcher {
   display: flex;
-  gap: 2px;
-  background: var(--bg-glass);
-  backdrop-filter: blur(20px);
+  gap: 6px;
+  background: rgba(0, 210, 255, 0.04);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 3px;
+  border-radius: var(--radius);
+  padding: 4px;
 }
 
 .view-switcher__btn {
   display: flex;
   align-items: center;
-  gap: 5px;
   padding: 5px 10px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius);
   background: transparent;
-  color: var(--text-dim);
+  color: var(--text-secondary);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 10px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.25s var(--ease);
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
 }
 
 .view-switcher__btn:hover {
-  color: var(--text-secondary);
+  color: var(--text-primary);
   background: var(--bg-surface);
 }
 
 .view-switcher__btn--active {
-  color: var(--text-primary);
-  background: var(--bg-elevated);
+  color: var(--cyan);
+  background: rgba(0, 210, 255, 0.12);
   border: 1px solid var(--border-bright);
-}
-
-.view-switcher__icon {
-  font-size: 10px;
-}
-
-.view-switcher__label {
-  font-size: 11px;
 }
