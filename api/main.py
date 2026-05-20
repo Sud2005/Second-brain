@@ -103,8 +103,8 @@ def stats():
     by_type   = {}
     by_status = {}
     for item in items:
-        by_type[item.source_type]     = by_type.get(item.source_type, 0) + 1
-        by_status[item.status]        = by_status.get(item.status, 0) + 1
+        by_type[item.source_type.value] = by_type.get(item.source_type.value, 0) + 1
+        by_status[item.status.value] = by_status.get(item.status.value, 0) + 1
     return {
         "total": len(items),
         "by_source_type": by_type,
@@ -219,10 +219,9 @@ def get_items(limit: int = 50, status: str | None = None):
     """List captured items, newest first."""
     status_filter = Status(status) if status else None
     items = list_items(limit=limit, status=status_filter)
-    # Ensure every item has an id (older index entries may lack one)
+    # Ensure every item has an id (older index entries may lack one or have full paths)
     for item in items:
-        if 'id' not in item and 'path' in item:
-            # Extract id from path: storage/items/<uuid>.json
+        if 'path' in item:
             item['id'] = Path(item['path']).stem
     return items
 

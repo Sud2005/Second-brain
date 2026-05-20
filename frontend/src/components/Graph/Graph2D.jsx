@@ -1,5 +1,5 @@
 import { useRef, useEffect, useCallback } from 'react';
-import { forceSimulation, forceLink, forceManyBody, forceCenter, forceX, forceY } from 'd3-force-3d';
+import { forceSimulation, forceLink, forceManyBody, forceX, forceY } from 'd3-force-3d';
 import useGraphStore from '../../store/graphStore';
 import './Graph2D.css';
 
@@ -15,20 +15,56 @@ const COLORS = [
 
 export default function Graph2D() {
   const canvasRef = useRef(null);
+  
   const nodes = useGraphStore(s => s.nodes);
   const edges = useGraphStore(s => s.edges);
   const setSelectedNode = useGraphStore(s => s.setSelectedNode);
   const selectedNodeId = useGraphStore(s => s.selectedNodeId);
   const activeCommunityFilter = useGraphStore(s => s.activeCommunityFilter);
+  
   const simRef = useRef(null);
   const posRef = useRef({});
 
+  // 1. D3 Force simulation setup (re-runs only when structure changes)
+  useEffect(() => {
+    if (nodes.length === 0) return;
+
+    const simNodes = nodes.map(n => ({ 
+      id: n.id, 
+      x: (Math.random() - 0.5) * 300, 
+      y: (Math.random() - 0.5) * 300 
+    }));
+    
+    const nodeIndex = {};
+    simNodes.forEach((n, i) => { nodeIndex[n.id] = i; });
+
+    const simLinks = edges
+      .filter(e => nodeIndex[e.source] !== undefined && nodeIndex[e.target] !== undefined)
+      .map(e => ({ source: nodeIndex[e.source], target: nodeIndex[e.target] }));
+
+    const sim = forceSimulation(simNodes, 2)
+      .force('link', forceLink(simLinks).distance(40).strength(0.2))
+      .force('charge', forceManyBody().strength(-30))
+      .force('x', forceX(0).strength(0.02))
+      .force('y', forceY(0).strength(0.02))
+      .on('tick', () => {
+        const pos = {};
+        simNodes.forEach(n => { pos[n.id] = { x: n.x, y: n.y }; });
+        posRef.current = pos;
+      });
+
+    simRef.current = sim;
+    return () => sim.stop();
+  }, [nodes, edges]);
+
+  // 2. Single Frame Drawing Function
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !canvas.parentElement) return;
+    
     const ctx = canvas.getContext('2d');
-    const w = canvas.width = canvas.parentElement.clientWidth;
-    const h = canvas.height = canvas.parentElement.clientHeight;
+    const w = canvas.width = canvas.parentElement.clientWidth || 800;
+    const h = canvas.height = canvas.parentElement.clientHeight || 600;
     const cx = w / 2;
     const cy = h / 2;
 
@@ -55,11 +91,11 @@ export default function Graph2D() {
 
       const color = n.communityId != null
         ? COLORS[n.communityId % COLORS.length]
-        : '#333';
+        : '#333333';
 
       const isFaded = activeCommunityFilter != null && n.communityId !== activeCommunityFilter;
       const isSelected = n.id === selectedNodeId;
-      const radius = n.type === 'item' ? Math.max(3, Math.min(8, 3 + n.connectionCount * 0.5)) : 2;
+      const radius = n.type === 'item' ? Math.max(3, Math.min(8, 3 + (n.connectionCount || 0) * 0.5)) : 2;
 
       // Glow
       if (!isFaded) {
@@ -87,35 +123,26 @@ export default function Graph2D() {
         ctx.stroke();
       }
     });
-
-    requestAnimationFrame(draw);
   }, [nodes, edges, selectedNodeId, activeCommunityFilter]);
 
+  // Keep a mutable ref to draw so we don't restart the rendering loop
+  const drawRef = useRef(draw);
   useEffect(() => {
-    const simNodes = nodes.map(n => ({ id: n.id, x: (Math.random() - 0.5) * 300, y: (Math.random() - 0.5) * 300 }));
-    const nodeIndex = {};
-    simNodes.forEach((n, i) => { nodeIndex[n.id] = i; });
+    drawRef.current = draw;
+  }, [draw]);
 
-    const simLinks = edges
-      .filter(e => nodeIndex[e.source] !== undefined && nodeIndex[e.target] !== undefined)
-      .map(e => ({ source: nodeIndex[e.source], target: nodeIndex[e.target] }));
-
-    const sim = forceSimulation(simNodes, 2)
-      .force('link', forceLink(simLinks).distance(40).strength(0.2))
-      .force('charge', forceManyBody().strength(-30))
-      .force('x', forceX(0).strength(0.02))
-      .force('y', forceY(0).strength(0.02))
-      .on('tick', () => {
-        const pos = {};
-        simNodes.forEach(n => { pos[n.id] = { x: n.x, y: n.y }; });
-        posRef.current = pos;
-      });
-
-    simRef.current = sim;
-    draw();
-
-    return () => sim.stop();
-  }, [nodes, edges, draw]);
+  // 3. Continuous rendering loop running while component is mounted
+  useEffect(() => {
+    let animId;
+    const loop = () => {
+      if (drawRef.current) {
+        drawRef.current();
+      }
+      animId = requestAnimationFrame(loop);
+    };
+    animId = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(animId);
+  }, []);
 
   // Click detection
   const handleClick = useCallback((e) => {

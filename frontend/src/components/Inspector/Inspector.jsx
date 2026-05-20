@@ -123,20 +123,17 @@ export default function Inspector() {
               </div>
             )}
 
-            {/* Summary — show even if there's no memory card */}
-            {!memoryCard && summary && (
-              <blockquote className="inspector__summary">
-                "{summary}"
-              </blockquote>
-            )}
-
-            {/* Memory Card */}
-            {memoryCard && (
-              <div className="inspector__section">
-                <span className="inspector__section-label mono">Memory Card</span>
+            {/* Overview / Summary */}
+            <div className="inspector__section">
+              <span className="inspector__section-label mono">Overview</span>
+              {memoryCard ? (
                 <MemoryCard card={memoryCard} />
-              </div>
-            )}
+              ) : summary ? (
+                <blockquote className="inspector__summary">"{summary}"</blockquote>
+              ) : (
+                <p className="inspector__summary dim">No overview available yet. The background worker might still be processing it.</p>
+              )}
+            </div>
 
             {/* Related Nodes */}
             {neighbors.length > 0 && (

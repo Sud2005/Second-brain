@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import { format } from 'date-fns';
 import useGraphStore from '../../store/graphStore';
 import './Timeline.css';
@@ -7,6 +7,18 @@ const COLORS = [
   '#00FFB2', '#FF6B6B', '#7B61FF', '#FFB800',
   '#00C8FF', '#FF9F43', '#A29BFE', '#FD79A8',
 ];
+
+// Safe date formatter to prevent any RangeError crashes
+function safeFormat(dateStr, formatStr) {
+  if (!dateStr) return '';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '';
+    return format(d, formatStr);
+  } catch (e) {
+    return '';
+  }
+}
 
 export default function Timeline() {
   const items = useGraphStore(s => s.items);
@@ -26,10 +38,10 @@ export default function Timeline() {
     return map;
   }, [communities]);
 
-  // Sort items by date
+  // Sort items by date (safely filtering invalid dates)
   const sorted = useMemo(() =>
     [...items]
-      .filter(i => i.created_at)
+      .filter(i => i.created_at && !isNaN(new Date(i.created_at).getTime()))
       .sort((a, b) => new Date(a.created_at) - new Date(b.created_at)),
     [items]
   );
@@ -116,7 +128,7 @@ export default function Timeline() {
                   animation: 'spawn 0.3s ease-out',
                 }}
                 onClick={() => setSelectedNode(item.id)}
-                title={`${item.title || 'Untitled'}\n${item.created_at ? format(new Date(item.created_at), 'MMM d, yyyy') : ''}`}
+                title={`${item.title || 'Untitled'}\n${safeFormat(item.created_at, 'MMM d, yyyy')}`}
               />
             );
           })}
@@ -125,8 +137,8 @@ export default function Timeline() {
         {/* Date axis */}
         {sorted.length > 0 && (
           <div className="timeline__axis mono">
-            <span>{format(new Date(sorted[0].created_at), 'MMM d')}</span>
-            <span>{format(new Date(sorted[sorted.length - 1].created_at), 'MMM d, yyyy')}</span>
+            <span>{safeFormat(sorted[0].created_at, 'MMM d')}</span>
+            <span>{safeFormat(sorted[sorted.length - 1].created_at, 'MMM d, yyyy')}</span>
           </div>
         )}
       </div>

@@ -39,6 +39,9 @@ export default function useGraph() {
       ]);
 
       setItems(items);
+      if (stats.total === 0 && items.length > 0) {
+        stats.total = items.length;
+      }
       setStats(stats);
 
       const communities = commData.communities || commData || [];
@@ -55,6 +58,19 @@ export default function useGraph() {
       const allEdges = [];
 
       items.forEach(item => {
+        // Sanitize item.id in case the backend sent a full path
+        let safeId = item.id;
+        if (safeId && safeId.includes('\\')) {
+          safeId = safeId.split('\\').pop();
+        }
+        if (safeId && safeId.includes('/')) {
+          safeId = safeId.split('/').pop();
+        }
+        if (safeId && safeId.endsWith('.json')) {
+          safeId = safeId.slice(0, -5);
+        }
+        item.id = safeId;
+
         const cid = item.metadata?.community_id ?? itemCommunity[item.id] ?? null;
         nodeMap.set(item.id, {
           id: item.id,
