@@ -1,4 +1,5 @@
 import useGraphStore from '../../store/graphStore';
+import { Node } from '../icons/Icons';
 import './RelatedNodes.css';
 
 export default function RelatedNodes({ neighbors }) {
@@ -8,7 +9,7 @@ export default function RelatedNodes({ neighbors }) {
 
   return (
     <div className="related-nodes">
-      <span className="related-nodes__label mono">Connected Nodes</span>
+      <span className="related-nodes__label mono uppercase">Connected Nodes</span>
       <div className="related-nodes__list">
         {neighbors.map((n, i) => (
           <button
@@ -20,6 +21,7 @@ export default function RelatedNodes({ neighbors }) {
               className="related-node__dot"
               style={{ background: n.color || '#333' }}
             />
+            <span className="related-node__icon"><Node size={12} /></span>
             <span className="related-node__label">{n.label?.slice(0, 30)}</span>
             <span className="related-node__type pill">{n.type}</span>
           </button>

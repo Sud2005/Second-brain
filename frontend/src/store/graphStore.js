@@ -26,8 +26,8 @@ const useGraphStore = create((set, get) => ({
   searchEntities: [],
   isSearching: false,
 
-  // ── Toast ───────────────────────────────────────────
-  toast: null,
+  // ── Toasts ──────────────────────────────────────────
+  toasts: [],
 
   // ── Actions ─────────────────────────────────────────
   setNodes: (nodes) => set({ nodes }),
@@ -64,8 +64,11 @@ const useGraphStore = create((set, get) => ({
   closeCaptureModal: () => set({ captureModalOpen: false }),
 
   showToast: (message, type = 'success') => {
-    set({ toast: { message, type } });
-    setTimeout(() => set({ toast: null }), 3000);
+    const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    set({ toasts: [...get().toasts, { id, message, type }] });
+    setTimeout(() => {
+      set({ toasts: get().toasts.filter(t => t.id !== id) });
+    }, 3000);
   },
 
   // Add a new node dynamically (used by realtime polling)

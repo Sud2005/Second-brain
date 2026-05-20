@@ -1,54 +1,60 @@
 .item-card {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   width: 100%;
-  padding: 10px 12px;
+  padding: 12px 16px;
   border: none;
   border-bottom: 1px solid var(--border);
   background: transparent;
   cursor: pointer;
   text-align: left;
-  transition: background 0.15s;
+  transition: background 0.2s var(--ease);
+  position: relative;
+  border-left: 2px solid transparent;
 }
 
 .item-card:hover {
-  background: var(--bg-surface);
+  background: rgba(0, 210, 255, 0.06);
 }
 
 .item-card--selected {
-  background: var(--bg-elevated);
-  border-left: 2px solid var(--accent-green);
+  background: rgba(0, 210, 255, 0.1);
+  border-left: 2px solid var(--cyan);
 }
 
 .item-card__row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .item-card__icon {
-  font-size: 14px;
+  color: var(--cyan);
   flex-shrink: 0;
 }
 
 .item-card__title {
   flex: 1;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
 }
 
 .item-card__meta {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-left: 22px;
+  padding-left: 24px;
 }
 
 .item-card__time {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-dim);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
 }

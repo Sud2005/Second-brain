@@ -1,10 +1,8 @@
-import { formatDistanceToNow } from 'date-fns';
 import useGraphStore from '../../store/graphStore';
+import { Node } from '../icons/Icons';
 import './MemoryCard.css';
 
 export default function MemoryCard({ card }) {
-  const setSelectedNode = useGraphStore(s => s.setSelectedNode);
-
   if (!card) return null;
 
   return (
@@ -19,7 +17,7 @@ export default function MemoryCard({ card }) {
       {/* Key concepts */}
       {card.key_concepts?.length > 0 && (
         <div className="memory-card__section">
-          <span className="memory-card__label mono">Key Concepts</span>
+          <span className="memory-card__label mono uppercase">Key Concepts</span>
           <div className="memory-card__chips">
             {card.key_concepts.map((c, i) => (
               <button
@@ -40,7 +38,7 @@ export default function MemoryCard({ card }) {
       {/* Suggested connections */}
       {card.suggested_connections?.length > 0 && (
         <div className="memory-card__section">
-          <span className="memory-card__label mono">Connections</span>
+          <span className="memory-card__label mono uppercase">Connections</span>
           <ul className="memory-card__list">
             {card.suggested_connections.map((c, i) => (
               <li key={i} className="memory-card__list-item">{c}</li>
@@ -52,7 +50,7 @@ export default function MemoryCard({ card }) {
       {/* Action */}
       {card.action && (
         <div className="memory-card__action">
-          <span className="memory-card__action-icon">☐</span>
+          <span className="memory-card__action-icon"><Node size={12} /></span>
           <span>{card.action}</span>
         </div>
       )}

@@ -19,13 +19,20 @@ export default function App() {
 
   const viewMode = useGraphStore(s => s.viewMode);
   const nodes = useGraphStore(s => s.nodes);
-  const toast = useGraphStore(s => s.toast);
+  const toasts = useGraphStore(s => s.toasts);
 
   const isEmpty = nodes.length === 0;
 
   return (
     <>
       <HUD />
+      <div className="scanline" />
+      <div className="viewport-brackets">
+        <span />
+        <span />
+        <span />
+        <span />
+      </div>
 
       <div className="app-layout">
         <Sidebar />
@@ -58,9 +65,13 @@ export default function App() {
       <CaptureModal />
 
       {/* Toast notification */}
-      {toast && (
-        <div className={`toast toast--${toast.type}`}>
-          {toast.message}
+      {toasts.length > 0 && (
+        <div className="toast-stack">
+          {toasts.map(t => (
+            <div key={t.id} className={`toast toast--${t.type || 'info'}`}>
+              {t.message}
+            </div>
+          ))}
         </div>
       )}
     </>

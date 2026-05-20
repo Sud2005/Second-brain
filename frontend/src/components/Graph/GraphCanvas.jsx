@@ -1,13 +1,8 @@
-import { useRef, useMemo, useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, Stars, Billboard, Text } from '@react-three/drei';
-import { EffectComposer, Bloom, Vignette, Noise } from '@react-three/postprocessing';
-import {
-  forceSimulation,
-  forceLink,
-  forceManyBody,
-  forceCenter,
-} from 'd3-force-3d';
+import { OrbitControls, Stars, Billboard, Text, Grid } from '@react-three/drei';
+import { forceSimulation, forceLink, forceManyBody, forceCenter } from 'd3-force-3d';
+import gsap from 'gsap';
 import * as THREE from 'three';
 import useGraphStore from '../../store/graphStore';
 
@@ -21,9 +16,9 @@ function useForceLayout(nodes, edges) {
 
     const simNodes = nodes.map(n => ({
       id: n.id,
-      x: (Math.random() - 0.5) * 80,
-      y: (Math.random() - 0.5) * 80,
-      z: (Math.random() - 0.5) * 80,
+      x: (Math.random() - 0.5) * 90,
+      y: (Math.random() - 0.5) * 60,
+      z: (Math.random() - 0.5) * 90,
     }));
 
     const nodeIndex = {};
@@ -37,13 +32,13 @@ function useForceLayout(nodes, edges) {
       }));
 
     const sim = forceSimulation(simNodes, 3)
-      .force('link', forceLink(simLinks).distance(20).strength(0.3))
-      .force('charge', forceManyBody().strength(-40))
+      .force('link', forceLink(simLinks).distance(24).strength(0.35))
+      .force('charge', forceManyBody().strength(-45))
       .force('center', forceCenter(0, 0, 0))
       .alpha(1)
       .alphaDecay(0.03);
 
-    for (let i = 0; i < 80; i++) sim.tick();
+    for (let i = 0; i < 90; i++) sim.tick();
 
     const pos = {};
     simNodes.forEach(n => {
@@ -57,241 +52,557 @@ function useForceLayout(nodes, edges) {
   return positions;
 }
 
-/* ── Individual Sci-Fi Node ────────────────────────── */
+/* ── Texture helpers ───────────────────────────────── */
 
-function SciFiNode({ node, position, isSelected, isHovered, isFaded, onSelect, onHover }) {
-  const groupRef = useRef();
-  const ring1Ref = useRef();
-  const ring2Ref = useRef();
-  const ring3Ref = useRef();
-  const particlesRef = useRef();
+function createGlowTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  gradient.addColorStop(0, 'rgba(0,210,255,0.8)');
+  gradient.addColorStop(0.4, 'rgba(0,210,255,0.35)');
+  gradient.addColorStop(1, 'rgba(0,210,255,0)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 128, 128);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  return texture;
+}
 
-  const isItem = node.type === 'item';
-  const baseRadius = isItem
-    ? Math.max(1.5, Math.min(3.5, 1.5 + (node.connectionCount || 0) * 0.3))
-    : 1.0;
-  
-  // High-tech neon colors
-  const baseColor = new THREE.Color(node.color || '#00e5ff');
-  const coreColor = new THREE.Color(isSelected ? '#ffffff' : baseColor).multiplyScalar(isSelected ? 2 : 1.5);
-  const shellColor = baseColor.clone().multiplyScalar(1.2);
+/* ── Instanced Nodes ───────────────────────────────── */
+
+function NodeInstances({
+  nodes,
+  positions,
+  selectedNodeId,
+  hoveredNodeId,
+  activeCommunityFilter,
+  onSelect,
+  onHover,
+}) {
+  const meshRef = useRef();
+  const glowRef = useRef();
+  const nodeIds = useMemo(() => nodes.map(n => n.id), [nodes]);
+  const baseScales = useMemo(() => nodes.map(n => {
+    const base = n.type === 'item' ? 1.1 : 0.9;
+    return base + Math.min(2.4, (n.connectionCount || 0) * 0.08);
+  }), [nodes]);
+  const baseColors = useMemo(() => nodes.map(n => new THREE.Color(n.color || '#00D2FF')), [nodes]);
+  const colorArrayRef = useRef(null);
+  const glowColorArrayRef = useRef(null);
+  const currentScalesRef = useRef(nodes.map(() => 1));
+  const pulseRef = useRef({ active: false, origin: new THREE.Vector3(), start: 0 });
+  const { camera } = useThree();
+  const tempMatrix = useMemo(() => new THREE.Matrix4(), []);
+  const tempPos = useMemo(() => new THREE.Vector3(), []);
+  const tempScale = useMemo(() => new THREE.Vector3(), []);
+  const tempColor = useMemo(() => new THREE.Color(), []);
+  const tempQuat = useMemo(() => new THREE.Quaternion(), []);
+
+  const glowTexture = useMemo(() => createGlowTexture(), []);
+
+  useEffect(() => {
+    currentScalesRef.current = nodes.map(() => 1);
+    colorArrayRef.current = new Float32Array(nodes.length * 3);
+    glowColorArrayRef.current = new Float32Array(nodes.length * 3);
+    nodes.forEach((node, i) => {
+      const color = baseColors[i];
+      colorArrayRef.current[i * 3] = color.r;
+      colorArrayRef.current[i * 3 + 1] = color.g;
+      colorArrayRef.current[i * 3 + 2] = color.b;
+      glowColorArrayRef.current[i * 3] = color.r;
+      glowColorArrayRef.current[i * 3 + 1] = color.g;
+      glowColorArrayRef.current[i * 3 + 2] = color.b;
+    });
+
+    if (meshRef.current) {
+      meshRef.current.instanceColor = new THREE.InstancedBufferAttribute(colorArrayRef.current, 3);
+    }
+    if (glowRef.current) {
+      glowRef.current.instanceColor = new THREE.InstancedBufferAttribute(glowColorArrayRef.current, 3);
+    }
+  }, [nodes, baseColors]);
+
+  useEffect(() => {
+    if (selectedNodeId && positions[selectedNodeId]) {
+      const pos = positions[selectedNodeId];
+      pulseRef.current = {
+        active: true,
+        origin: new THREE.Vector3(pos[0], pos[1], pos[2]),
+        start: performance.now(),
+      };
+    }
+  }, [selectedNodeId, positions]);
 
   useFrame((state, delta) => {
-    if (!groupRef.current) return;
-    
-    // Hover/Select scaling
-    const targetScale = isHovered ? 1.4 : isSelected ? 1.25 : 1;
-    groupRef.current.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.1);
+    if (!meshRef.current || !glowRef.current) return;
+    const now = performance.now();
+    const pulseActive = pulseRef.current.active;
+    const pulseElapsed = pulseActive ? (now - pulseRef.current.start) / 1000 : 0;
+    const pulseStrength = pulseActive ? Math.max(0, 1 - pulseElapsed / 1.2) : 0;
+    if (pulseElapsed > 1.2) pulseRef.current.active = false;
 
-    // Rotate concentric rings on different axes for "atomic orbital" look
-    if (ring1Ref.current) ring1Ref.current.rotation.x += delta * 0.5;
-    if (ring2Ref.current) ring2Ref.current.rotation.y += delta * 0.7;
-    if (ring3Ref.current) ring3Ref.current.rotation.z -= delta * 0.4;
-    
-    // Rotate floating particles
-    if (particlesRef.current) {
-      particlesRef.current.rotation.y += delta * 1.5;
-      particlesRef.current.rotation.x += delta * 0.5;
-    }
+    nodes.forEach((node, i) => {
+      const pos = positions[node.id];
+      if (!pos) return;
+      tempPos.set(pos[0], pos[1], pos[2]);
+      const isSelected = node.id === selectedNodeId;
+      const isHovered = node.id === hoveredNodeId;
+      const isFaded = activeCommunityFilter != null && node.communityId !== activeCommunityFilter;
+      let pulseBoost = 0;
+      if (pulseStrength > 0) {
+        const dist = tempPos.distanceTo(pulseRef.current.origin);
+        if (dist < 30) {
+          pulseBoost = (1 - dist / 30) * pulseStrength * 0.6;
+        }
+      }
+
+      const targetScale = baseScales[i]
+        * (isSelected ? 1.7 : isHovered ? 1.35 : 1)
+        * (isFaded ? 0.7 : 1)
+        + pulseBoost;
+
+      currentScalesRef.current[i] = THREE.MathUtils.damp(
+        currentScalesRef.current[i],
+        targetScale,
+        6,
+        delta,
+      );
+
+      tempScale.setScalar(currentScalesRef.current[i]);
+      tempQuat.identity();
+      tempMatrix.compose(tempPos, tempQuat, tempScale);
+      meshRef.current.setMatrixAt(i, tempMatrix);
+
+      const haloScale = currentScalesRef.current[i] * 4.2;
+      tempScale.set(haloScale, haloScale, haloScale);
+      tempMatrix.compose(tempPos, camera.quaternion, tempScale);
+      glowRef.current.setMatrixAt(i, tempMatrix);
+
+      let intensity = isFaded ? 0.15 : 1;
+      if (isHovered) intensity += 0.5;
+      if (isSelected) intensity += 0.9;
+      if (pulseBoost > 0) intensity += pulseBoost;
+      tempColor.copy(baseColors[i]).multiplyScalar(intensity);
+
+      colorArrayRef.current[i * 3] = tempColor.r;
+      colorArrayRef.current[i * 3 + 1] = tempColor.g;
+      colorArrayRef.current[i * 3 + 2] = tempColor.b;
+      glowColorArrayRef.current[i * 3] = tempColor.r;
+      glowColorArrayRef.current[i * 3 + 1] = tempColor.g;
+      glowColorArrayRef.current[i * 3 + 2] = tempColor.b;
+    });
+
+    meshRef.current.instanceMatrix.needsUpdate = true;
+    glowRef.current.instanceMatrix.needsUpdate = true;
+    if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true;
+    if (glowRef.current.instanceColor) glowRef.current.instanceColor.needsUpdate = true;
   });
 
+  const handlePointerMove = (e) => {
+    e.stopPropagation();
+    const idx = e.instanceId;
+    if (idx == null) return;
+    onHover(nodeIds[idx]);
+    document.body.style.cursor = 'pointer';
+  };
+
+  const handlePointerOut = () => {
+    onHover(null);
+    document.body.style.cursor = 'default';
+  };
+
+  const handleClick = (e) => {
+    e.stopPropagation();
+    const idx = e.instanceId;
+    if (idx == null) return;
+    onSelect(nodeIds[idx]);
+  };
+
   return (
-    <group position={position} ref={groupRef}>
-      {/* 1. Ultra-bright Core (Triggers intense Bloom) */}
-      <mesh
-        onClick={(e) => { e.stopPropagation(); onSelect(node.id); }}
-        onPointerOver={(e) => { e.stopPropagation(); onHover(node.id); document.body.style.cursor = 'pointer'; }}
-        onPointerOut={() => { onHover(null); document.body.style.cursor = 'default'; }}
+    <>
+      <instancedMesh
+        ref={meshRef}
+        args={[null, null, nodes.length]}
+        onPointerMove={handlePointerMove}
+        onPointerOut={handlePointerOut}
+        onClick={handleClick}
       >
-        {isItem ? <sphereGeometry args={[baseRadius * 0.4, 32, 32]} /> : <octahedronGeometry args={[baseRadius * 0.5, 0]} />}
-        <meshBasicMaterial color={coreColor} toneMapped={false} />
-      </mesh>
-
-      {/* 2. Transparent Holographic Shell */}
-      <mesh>
-        {isItem ? <sphereGeometry args={[baseRadius * 0.8, 32, 32]} /> : <octahedronGeometry args={[baseRadius * 0.9, 0]} />}
-        <meshPhysicalMaterial 
-          color={shellColor} 
-          emissive={shellColor}
-          emissiveIntensity={0.5}
-          transparent 
-          opacity={isFaded ? 0.05 : isSelected ? 0.6 : 0.3} 
-          roughness={0.1}
-          transmission={0.9} // glass-like
-          thickness={0.5}
-          blending={THREE.AdditiveBlending}
+        <sphereGeometry args={[1, 18, 18]} />
+        <meshPhysicalMaterial
+          color="#00D2FF"
+          emissive="#00D2FF"
+          emissiveIntensity={1.1}
+          metalness={0.6}
+          roughness={0.25}
+          transparent
+          opacity={0.7}
           depthWrite={false}
+          transmission={0.6}
+          vertexColors
         />
-      </mesh>
-
-      {/* 3. Atomic Orbital Energy Rings */}
-      {isItem && !isFaded && (
-        <>
-          <mesh ref={ring1Ref}>
-            <torusGeometry args={[baseRadius * 1.2, 0.02, 16, 64]} />
-            <meshBasicMaterial color={baseColor} transparent opacity={isSelected ? 0.8 : 0.3} blending={THREE.AdditiveBlending} toneMapped={false} />
-          </mesh>
-          <mesh ref={ring2Ref} rotation={[Math.PI / 3, 0, 0]}>
-            <torusGeometry args={[baseRadius * 1.3, 0.015, 16, 64]} />
-            <meshBasicMaterial color={baseColor} transparent opacity={isSelected ? 0.6 : 0.2} blending={THREE.AdditiveBlending} toneMapped={false} />
-          </mesh>
-          {(isSelected || isHovered) && (
-            <mesh ref={ring3Ref} rotation={[0, Math.PI / 4, Math.PI / 6]}>
-              <torusGeometry args={[baseRadius * 1.5, 0.01, 16, 64]} />
-              <meshBasicMaterial color={'#ffffff'} transparent opacity={0.5} blending={THREE.AdditiveBlending} toneMapped={false} />
-            </mesh>
-          )}
-        </>
-      )}
-
-      {/* 4. Floating Data Particles (Only for items, more if selected) */}
-      {isItem && !isFaded && (
-        <group ref={particlesRef}>
-          {Array.from({ length: isSelected ? 6 : 3 }).map((_, i) => {
-            const angle = (i / (isSelected ? 6 : 3)) * Math.PI * 2;
-            const r = baseRadius * 1.8;
-            return (
-              <mesh key={i} position={[Math.cos(angle) * r, Math.sin(angle * 2) * 0.5, Math.sin(angle) * r]}>
-                <sphereGeometry args={[0.08, 8, 8]} />
-                <meshBasicMaterial color="#ffffff" toneMapped={false} blending={THREE.AdditiveBlending} />
-              </mesh>
-            );
-          })}
-        </group>
-      )}
-
-      {/* Label Billboard */}
-      {(isHovered || isSelected) && (
-        <Billboard position={[0, baseRadius * 2 + 1, 0]}>
-          <Text
-            fontSize={1.2}
-            color="#ffffff"
-            anchorX="center"
-            anchorY="bottom"
-            maxWidth={25}
-            outlineWidth={0.05}
-            outlineColor="#001122"
-          >
-            {node.icon} {node.label?.slice(0, 40)}
-          </Text>
-        </Billboard>
-      )}
-    </group>
+      </instancedMesh>
+      <instancedMesh ref={glowRef} args={[null, null, nodes.length]}>
+        <planeGeometry args={[1, 1]} />
+        <meshBasicMaterial
+          map={glowTexture}
+          transparent
+          opacity={0.6}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+          vertexColors
+        />
+      </instancedMesh>
+    </>
   );
 }
 
-/* ── Sci-Fi Energy Beam Edges ──────────────────────── */
+/* ── Edge rendering ─────────────────────────────────── */
 
-function PlasmaEdges({ edges, positions, activeCommunityFilter, nodes }) {
-  const linesRef = useRef();
+function EdgeSegments({ edges, positions, nodes, activeCommunityFilter }) {
+  const nodeMap = useMemo(() => {
+    const map = new Map();
+    nodes.forEach(n => map.set(n.id, n));
+    return map;
+  }, [nodes]);
 
-  const lineData = useMemo(() => {
-    const pts = [];
-    const colors = [];
-    const nodeMap = {};
-    nodes.forEach(n => { nodeMap[n.id] = n; });
+  const { mention, related, cooccur } = useMemo(() => {
+    const mentionPts = [];
+    const mentionColors = [];
+    const relatedPts = [];
+    const relatedColors = [];
+    const coPts = [];
+    const coColors = [];
 
     edges.forEach(e => {
       const sp = positions[e.source];
       const tp = positions[e.target];
       if (!sp || !tp) return;
+      const relation = e.relation || 'RELATED_TO';
+      const sourceNode = nodeMap.get(e.source);
+      const targetNode = nodeMap.get(e.target);
+      const cid = sourceNode?.communityId ?? targetNode?.communityId ?? null;
+      const filteredOut = activeCommunityFilter != null && cid !== activeCommunityFilter;
 
-      const sourceNode = nodeMap[e.source];
-      const targetNode = nodeMap[e.target];
-
-      let opacity = 0.3;
-      let col = new THREE.Color('#00ffff'); // default cyan
-
-      if (e.relation === 'RELATED_TO' || e.relation === 'CO_OCCURS_WITH') {
-        const cid = sourceNode?.communityId ?? targetNode?.communityId;
-        if (cid != null) col = new THREE.Color(sourceNode?.color || '#00e5ff');
-        opacity = e.relation === 'RELATED_TO' ? 0.6 : 0.2;
+      if (relation === 'MENTIONS') {
+        const color = new THREE.Color('#E8F4FF').multiplyScalar(filteredOut ? 0.08 : 0.2);
+        mentionPts.push(...sp, ...tp);
+        mentionColors.push(color.r, color.g, color.b, color.r, color.g, color.b);
+      } else if (relation === 'CO_OCCURS_WITH') {
+        const base = new THREE.Color(sourceNode?.color || '#00D2FF');
+        const color = base.multiplyScalar(filteredOut ? 0.1 : 0.45);
+        coPts.push(...sp, ...tp);
+        coColors.push(color.r, color.g, color.b, color.r, color.g, color.b);
+      } else {
+        const base = new THREE.Color(sourceNode?.color || '#00D2FF');
+        const color = base.multiplyScalar(filteredOut ? 0.08 : 0.7);
+        relatedPts.push(...sp, ...tp);
+        relatedColors.push(color.r, color.g, color.b, color.r, color.g, color.b);
       }
-
-      if (activeCommunityFilter != null) {
-        const srcMatch = sourceNode?.communityId === activeCommunityFilter;
-        const tgtMatch = targetNode?.communityId === activeCommunityFilter;
-        if (!srcMatch && !tgtMatch) opacity = 0.02;
-      }
-
-      // Boost color intensity for the glow
-      col.multiplyScalar(opacity * 2.0);
-
-      pts.push(sp[0], sp[1], sp[2], tp[0], tp[1], tp[2]);
-      colors.push(col.r, col.g, col.b, col.r, col.g, col.b);
     });
 
-    return { positions: new Float32Array(pts), colors: new Float32Array(colors) };
-  }, [edges, positions, activeCommunityFilter, nodes]);
+    return {
+      mention: {
+        positions: new Float32Array(mentionPts),
+        colors: new Float32Array(mentionColors),
+      },
+      related: {
+        positions: new Float32Array(relatedPts),
+        colors: new Float32Array(relatedColors),
+      },
+      cooccur: {
+        positions: new Float32Array(coPts),
+        colors: new Float32Array(coColors),
+      },
+    };
+  }, [edges, positions, nodeMap, activeCommunityFilter]);
 
-  if (lineData.positions.length === 0) return null;
+  const dashedRef = useRef();
+  useEffect(() => {
+    if (dashedRef.current) dashedRef.current.computeLineDistances();
+  }, [cooccur.positions]);
 
   return (
-    <lineSegments ref={linesRef}>
-      <bufferGeometry>
-        <bufferAttribute
-          attach="attributes-position"
-          array={lineData.positions}
-          count={lineData.positions.length / 3}
-          itemSize={3}
-        />
-        <bufferAttribute
-          attach="attributes-color"
-          array={lineData.colors}
-          count={lineData.colors.length / 3}
-          itemSize={3}
-        />
-      </bufferGeometry>
-      {/* Additive blending makes intersecting lines intensely bright like plasma */}
-      <lineBasicMaterial vertexColors transparent opacity={0.8} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
-    </lineSegments>
+    <>
+      {mention.positions.length > 0 && (
+        <lineSegments>
+          <bufferGeometry>
+            <bufferAttribute
+              attach="attributes-position"
+              array={mention.positions}
+              count={mention.positions.length / 3}
+              itemSize={3}
+            />
+            <bufferAttribute
+              attach="attributes-color"
+              array={mention.colors}
+              count={mention.colors.length / 3}
+              itemSize={3}
+            />
+          </bufferGeometry>
+          <lineBasicMaterial
+            vertexColors
+            transparent
+            opacity={0.9}
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
+          />
+        </lineSegments>
+      )}
+      {related.positions.length > 0 && (
+        <lineSegments>
+          <bufferGeometry>
+            <bufferAttribute
+              attach="attributes-position"
+              array={related.positions}
+              count={related.positions.length / 3}
+              itemSize={3}
+            />
+            <bufferAttribute
+              attach="attributes-color"
+              array={related.colors}
+              count={related.colors.length / 3}
+              itemSize={3}
+            />
+          </bufferGeometry>
+          <lineBasicMaterial
+            vertexColors
+            transparent
+            opacity={0.85}
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
+          />
+        </lineSegments>
+      )}
+      {cooccur.positions.length > 0 && (
+        <lineSegments ref={dashedRef}>
+          <bufferGeometry>
+            <bufferAttribute
+              attach="attributes-position"
+              array={cooccur.positions}
+              count={cooccur.positions.length / 3}
+              itemSize={3}
+            />
+            <bufferAttribute
+              attach="attributes-color"
+              array={cooccur.colors}
+              count={cooccur.colors.length / 3}
+              itemSize={3}
+            />
+          </bufferGeometry>
+          <lineDashedMaterial
+            vertexColors
+            transparent
+            opacity={0.8}
+            dashSize={2}
+            gapSize={4}
+            depthWrite={false}
+            blending={THREE.AdditiveBlending}
+          />
+        </lineSegments>
+      )}
+    </>
   );
 }
 
-/* ── Camera animator ───────────────────────────────── */
+/* ── Data packets ───────────────────────────────────── */
 
-function CameraAnimator({ targetPosition }) {
-  const { camera, controls } = useThree();
-  const targetRef = useRef(null);
+function DataPackets({ edges, positions, nodes, activeCommunityFilter }) {
+  const packetRef = useRef();
+  const tempMatrix = useRef(new THREE.Matrix4());
+  const tempPosition = useRef(new THREE.Vector3());
+  const tempScale = useRef(new THREE.Vector3(0.35, 0.35, 0.35));
+  const tempQuat = useRef(new THREE.Quaternion());
+  const colorsRef = useRef(null);
+
+  const packets = useMemo(() => {
+    const nodeMap = new Map();
+    nodes.forEach(n => nodeMap.set(n.id, n));
+    const list = [];
+    edges.forEach(e => {
+      if ((e.relation || 'RELATED_TO') !== 'RELATED_TO') return;
+      const sp = positions[e.source];
+      const tp = positions[e.target];
+      if (!sp || !tp) return;
+      const sourceNode = nodeMap.get(e.source);
+      const targetNode = nodeMap.get(e.target);
+      const cid = sourceNode?.communityId ?? targetNode?.communityId ?? null;
+      if (activeCommunityFilter != null && cid !== activeCommunityFilter) return;
+      const color = sourceNode?.color || '#00D2FF';
+      list.push({
+        start: new THREE.Vector3(sp[0], sp[1], sp[2]),
+        end: new THREE.Vector3(tp[0], tp[1], tp[2]),
+        speed: 0.18 + Math.random() * 0.15,
+        offset: Math.random(),
+        color,
+      });
+    });
+    return list.slice(0, 200);
+  }, [edges, positions, nodes, activeCommunityFilter]);
 
   useEffect(() => {
-    if (targetPosition) {
-      // Comfortably offset so nodes look elegant and not cut off/too close
-      targetRef.current = new THREE.Vector3(
-        targetPosition[0] + 22,
-        targetPosition[1] + 14,
-        targetPosition[2] + 22,
+    if (!packetRef.current) return;
+    colorsRef.current = new Float32Array(packets.length * 3);
+    packets.forEach((p, i) => {
+      const c = new THREE.Color(p.color);
+      colorsRef.current[i * 3] = c.r;
+      colorsRef.current[i * 3 + 1] = c.g;
+      colorsRef.current[i * 3 + 2] = c.b;
+    });
+    packetRef.current.instanceColor = new THREE.InstancedBufferAttribute(colorsRef.current, 3);
+  }, [packets]);
+
+  useFrame(({ clock }) => {
+    if (!packetRef.current) return;
+    packets.forEach((packet, i) => {
+      const t = (clock.elapsedTime * packet.speed + packet.offset) % 1;
+      tempPosition.current.lerpVectors(packet.start, packet.end, t);
+      tempMatrix.current.compose(
+        tempPosition.current,
+        tempQuat.current,
+        tempScale.current,
       );
-
-      // Smoothly focus OrbitControls target on the selected node
-      if (controls) {
-        controls.target.set(targetPosition[0], targetPosition[1], targetPosition[2]);
-      }
-    }
-  }, [targetPosition, controls]);
-
-  useFrame(() => {
-    if (targetRef.current) {
-      camera.position.lerp(targetRef.current, 0.1);
-      if (camera.position.distanceTo(targetRef.current) < 0.3) {
-        targetRef.current = null;
-      }
-    }
+      packetRef.current.setMatrixAt(i, tempMatrix.current);
+    });
+    packetRef.current.instanceMatrix.needsUpdate = true;
+    if (packetRef.current.instanceColor) packetRef.current.instanceColor.needsUpdate = true;
   });
+
+  if (packets.length === 0) return null;
+
+  return (
+    <instancedMesh ref={packetRef} args={[null, null, packets.length]}>
+      <sphereGeometry args={[1, 10, 10]} />
+      <meshBasicMaterial
+        transparent
+        opacity={0.9}
+        depthWrite={false}
+        blending={THREE.AdditiveBlending}
+        vertexColors
+      />
+    </instancedMesh>
+  );
+}
+
+/* ── Labels ─────────────────────────────────────────── */
+
+function NodeLabels({ nodes, positions }) {
+  const { camera } = useThree();
+  const hoveredNodeId = useGraphStore(s => s.hoveredNodeId);
+  const selectedNodeId = useGraphStore(s => s.selectedNodeId);
+  const [visible, setVisible] = useState(new Set());
+  const lastUpdateRef = useRef(0);
+  const tempVec = useRef(new THREE.Vector3());
+
+  useFrame(({ clock }) => {
+    if (clock.elapsedTime - lastUpdateRef.current < 0.35) return;
+    lastUpdateRef.current = clock.elapsedTime;
+    const next = new Set();
+    nodes.forEach(n => {
+      const pos = positions[n.id];
+      if (!pos) return;
+      tempVec.current.set(pos[0], pos[1], pos[2]);
+      const dist = camera.position.distanceTo(tempVec.current);
+      if (dist < 65) next.add(n.id);
+    });
+    setVisible(next);
+  });
+
+  const fontUrl = 'https://fonts.gstatic.com/s/spacemono/v13/i7dPIFZifjKcF5UAWdDRYEF8QnA.ttf';
+
+  return (
+    <>
+      {nodes.map(node => {
+        const pos = positions[node.id];
+        if (!pos) return null;
+        const shouldShow = visible.has(node.id) || node.id === hoveredNodeId || node.id === selectedNodeId;
+        if (!shouldShow) return null;
+        const label = (node.label || 'NODE').toUpperCase();
+        const clipped = label.length > 18 ? `${label.slice(0, 18)}...` : label;
+        const color = node.id === hoveredNodeId ? '#00D2FF' : node.id === selectedNodeId ? '#E8F4FF' : '#6B8FA8';
+        return (
+          <Billboard key={node.id} position={[pos[0], pos[1] + 2.6, pos[2]]}>
+            <Text
+              font={fontUrl}
+              fontSize={1.05}
+              color={color}
+              anchorX="center"
+              anchorY="bottom"
+              maxWidth={20}
+              letterSpacing={0.22}
+            >
+              {clipped}
+            </Text>
+          </Billboard>
+        );
+      })}
+    </>
+  );
+}
+
+/* ── Camera rig ─────────────────────────────────────── */
+
+function CameraRig({ target }) {
+  const { camera, controls } = useThree();
+  const lastTargetRef = useRef(null);
+
+  useEffect(() => {
+    if (!target || !controls) return;
+    const nextTarget = new THREE.Vector3(target[0], target[1], target[2]);
+    if (lastTargetRef.current && nextTarget.equals(lastTargetRef.current)) return;
+    lastTargetRef.current = nextTarget.clone();
+
+    const offset = new THREE.Vector3(24, 14, 24);
+    const destination = nextTarget.clone().add(offset);
+
+    gsap.to(camera.position, {
+      x: destination.x,
+      y: destination.y,
+      z: destination.z,
+      duration: 1.2,
+      ease: 'power3.inOut',
+    });
+
+    gsap.to(controls.target, {
+      x: nextTarget.x,
+      y: nextTarget.y,
+      z: nextTarget.z,
+      duration: 1.2,
+      ease: 'power3.inOut',
+      onUpdate: () => controls.update(),
+    });
+  }, [target, camera, controls]);
 
   return null;
 }
 
-/* ── Environment & Grid ────────────────────────────── */
+/* ── Rings ──────────────────────────────────────────── */
 
-function SciFiGrid() {
+function ScanRing() {
+  const ringRef = useRef();
+  useFrame((_, delta) => {
+    if (ringRef.current) ringRef.current.rotation.y += delta * 0.15;
+  });
   return (
-    <group position={[0, -30, 0]}>
-      {/* Main coordinate grid */}
-      <gridHelper args={[300, 60, '#00e5ff', '#001a2c']} />
-      {/* Inner precise grid */}
-      <gridHelper args={[100, 40, '#005577', '#001122']} position={[0, 0.1, 0]} />
-    </group>
+    <mesh ref={ringRef} rotation={[Math.PI / 2, 0, 0]}>
+      <torusGeometry args={[42, 0.08, 16, 120]} />
+      <meshBasicMaterial color="#00D2FF" transparent opacity={0.4} wireframe />
+    </mesh>
+  );
+}
+
+function SelectedRing({ position }) {
+  const ringRef = useRef();
+  useFrame((_, delta) => {
+    if (ringRef.current) ringRef.current.rotation.y += delta * 0.8;
+  });
+  if (!position) return null;
+  return (
+    <mesh ref={ringRef} position={position}>
+      <torusGeometry args={[2.8, 0.05, 16, 80]} />
+      <meshBasicMaterial color="#00D2FF" transparent opacity={0.7} wireframe />
+    </mesh>
   );
 }
 
@@ -306,64 +617,61 @@ function SceneContent({ nodes, edges }) {
 
   const positions = useForceLayout(nodes, edges);
   const selectedPos = selectedNodeId ? positions[selectedNodeId] : null;
+  const selectedVec = selectedPos ? new THREE.Vector3(...selectedPos) : null;
 
   return (
     <>
-      <ambientLight intensity={0.1} color="#001122" />
-      <pointLight position={[50, 50, 50]} intensity={1} color="#00e5ff" />
-      <pointLight position={[-50, -30, -50]} intensity={0.5} color="#7B61FF" />
+      <color attach="background" args={['#00020A']} />
+      <fog attach="fog" args={['#00020A', 80, 200]} />
+      <ambientLight intensity={0.05} color="#001830" />
+      <pointLight position={[40, 50, 40]} intensity={0.6} color="#00D2FF" />
+      <pointLight position={[-40, -30, -40]} intensity={0.4} color="#4b7fff" />
 
-      {/* Space dust / tiny stars */}
-      <Stars radius={150} depth={50} count={3000} factor={2} saturation={1} fade speed={1} />
-      <SciFiGrid />
+      <Stars radius={300} depth={60} count={3000} factor={2} saturation={0.3} fade speed={1} />
+      <Grid
+        position={[0, -15, 0]}
+        args={[200, 200]}
+        cellSize={4}
+        cellThickness={0.4}
+        sectionSize={20}
+        sectionThickness={1}
+        cellColor="#003349"
+        sectionColor="#00D2FF"
+        fadeDistance={90}
+        fadeStrength={1}
+        infiniteGrid
+      />
 
-      <PlasmaEdges
+      <ScanRing />
+
+      <EdgeSegments
         edges={edges}
         positions={positions}
-        activeCommunityFilter={activeCommunityFilter}
         nodes={nodes}
+        activeCommunityFilter={activeCommunityFilter}
+      />
+      <DataPackets
+        edges={edges}
+        positions={positions}
+        nodes={nodes}
+        activeCommunityFilter={activeCommunityFilter}
       />
 
-      {nodes.map(node => {
-        const pos = positions[node.id];
-        if (!pos) return null;
-
-        const isFaded = activeCommunityFilter != null && node.communityId !== activeCommunityFilter;
-
-        return (
-          <SciFiNode
-            key={node.id}
-            node={node}
-            position={pos}
-            isSelected={selectedNodeId === node.id}
-            isHovered={hoveredNodeId === node.id}
-            isFaded={isFaded}
-            onSelect={setSelectedNode}
-            onHover={setHoveredNode}
-          />
-        );
-      })}
-
-      <CameraAnimator targetPosition={selectedPos} />
-      <OrbitControls
-        makeDefault
-        enableDamping
-        dampingFactor={0.05}
-        minDistance={5}
-        maxDistance={300}
+      <NodeInstances
+        nodes={nodes}
+        positions={positions}
+        selectedNodeId={selectedNodeId}
+        hoveredNodeId={hoveredNodeId}
+        activeCommunityFilter={activeCommunityFilter}
+        onSelect={setSelectedNode}
+        onHover={setHoveredNode}
       />
 
-      {/* Post-processing Sci-Fi Effects */}
-      <EffectComposer disableNormalPass>
-        <Bloom 
-          luminanceThreshold={1.0} 
-          luminanceSmoothing={0.5} 
-          intensity={2.5} 
-          mipmapBlur 
-        />
-        <Noise opacity={0.03} />
-        <Vignette eskil={false} offset={0.1} darkness={1.1} />
-      </EffectComposer>
+      <NodeLabels nodes={nodes} positions={positions} />
+      <SelectedRing position={selectedVec} />
+
+      <CameraRig target={selectedPos} />
+      <OrbitControls makeDefault enableDamping dampingFactor={0.08} minDistance={8} maxDistance={260} />
     </>
   );
 }
@@ -376,13 +684,13 @@ export default function GraphCanvas() {
   const setSelectedNode = useGraphStore(s => s.setSelectedNode);
 
   return (
-    <div style={{ width: '100%', height: '100%', background: 'radial-gradient(circle at center, #020813 0%, #000000 100%)' }}>
+    <div className="graph-canvas">
       <Canvas
         camera={{ position: [40, 30, 40], fov: 60, near: 0.1, far: 1000 }}
         onPointerMissed={() => setSelectedNode(null)}
-        gl={{ antialias: false, alpha: true, powerPreference: "high-performance" }}
+        gl={{ antialias: false, alpha: true, powerPreference: 'high-performance' }}
+        dpr={[1, 1.5]}
       >
-        <fog attach="fog" args={['#01040a', 60, 250]} />
         <SceneContent nodes={nodes} edges={edges} />
       </Canvas>
     </div>

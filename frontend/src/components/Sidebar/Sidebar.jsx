@@ -1,16 +1,27 @@
 import { useMemo } from 'react';
+import { motion } from 'framer-motion';
 import useGraphStore from '../../store/graphStore';
 import SearchBar from './SearchBar';
 import ItemCard from './ItemCard';
+import { Thought, Screenshot, Chat, Url, Node } from '../icons/Icons';
 import './Sidebar.css';
 
 const TABS = [
-  { id: 'all', label: 'All' },
-  { id: 'thought', label: '💭' },
-  { id: 'screenshot', label: '📸' },
-  { id: 'ai_chat', label: '🤖' },
-  { id: 'url', label: '🔗' },
+  { id: 'all', label: 'ALL', icon: Node },
+  { id: 'thought', label: 'THOUGHTS', icon: Thought },
+  { id: 'screenshot', label: 'SCREENSHOTS', icon: Screenshot },
+  { id: 'ai_chat', label: 'CHATS', icon: Chat },
+  { id: 'url', label: 'URLS', icon: Url },
 ];
+
+const searchResultVariants = {
+  hidden: { opacity: 0, y: 6 },
+  visible: (i) => ({
+    opacity: 1,
+    y: 0,
+    transition: { delay: i * 0.04, duration: 0.2, ease: [0.2, 0.9, 0.2, 1] },
+  }),
+};
 
 export default function Sidebar() {
   const items = useGraphStore(s => s.items);
@@ -47,17 +58,21 @@ export default function Sidebar() {
       {/* Search results */}
       {hasSearchResults && (
         <div className="sidebar__search-results">
-          <div className="sidebar__section-label mono">Search Results</div>
+          <div className="sidebar__section-label mono uppercase">Search Results</div>
           {searchResults.map((r, i) => (
-            <button
+            <motion.button
               key={r.item_id || i}
               className="search-result"
               onClick={() => setSelectedNode(r.item_id)}
+              variants={searchResultVariants}
+              initial="hidden"
+              animate="visible"
+              custom={i}
             >
               <div className="search-result__title">{r.title || 'Untitled'}</div>
-              <div className="search-result__meta mono">
+              <div className="search-result__meta mono uppercase">
                 <span className="search-result__score" style={{
-                  color: r.score >= 0.7 ? 'var(--accent-green)' : r.score >= 0.4 ? 'var(--accent-yellow)' : 'var(--text-dim)',
+                  color: r.score >= 0.7 ? 'var(--node-6)' : r.score >= 0.4 ? 'var(--node-3)' : 'var(--text-dim)',
                 }}>
                   {(r.score * 100).toFixed(0)}%
                 </span>
@@ -68,28 +83,29 @@ export default function Sidebar() {
               {r.summary && (
                 <div className="search-result__summary">{r.summary.slice(0, 100)}...</div>
               )}
-            </button>
+            </motion.button>
           ))}
         </div>
       )}
 
       {/* Filter tabs */}
-      <div className="sidebar__tabs">
-        {TABS.map(t => (
-          <button
-            key={t.id}
-            className={`sidebar__tab ${sidebarTab === t.id ? 'sidebar__tab--active' : ''}`}
-            onClick={() => setSidebarTab(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+        <div className="sidebar__tabs">
+          {TABS.map(t => (
+            <button
+              key={t.id}
+              className={`sidebar__tab ${sidebarTab === t.id ? 'sidebar__tab--active' : ''}`}
+              onClick={() => setSidebarTab(t.id)}
+            >
+              <t.icon size={12} color="currentColor" />
+              <span>{t.label}</span>
+            </button>
+          ))}
+        </div>
 
       {/* Item list */}
       <div className="sidebar__list">
         {filtered.length === 0 ? (
-          <div className="sidebar__empty mono">No items yet.</div>
+          <div className="sidebar__empty mono uppercase">No items yet.</div>
         ) : (
           filtered.map(item => <ItemCard key={item.id} item={item} />)
         )}
