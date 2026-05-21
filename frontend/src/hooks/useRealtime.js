@@ -40,6 +40,24 @@ export default function useRealtime() {
               connectionCount: 0,
             });
             showToast(`New: ${item.title || item.raw_content?.slice(0, 40) || 'item'}`, 'success');
+          } else {
+            // Existing item: check if status changed
+            const existingItem = useGraphStore.getState().items.find(i => i.id === item.id);
+            if (existingItem && existingItem.status !== item.status) {
+              useGraphStore.getState().updateItem(item.id, { status: item.status, title: item.title });
+              useGraphStore.getState().updateNode(item.id, { status: item.status, label: item.title });
+              
+              if (item.status === 'done') {
+                showToast(`Processed: ${item.title || 'item'}`, 'success');
+                // Force Inspector to refresh if this item is selected
+                if (useGraphStore.getState().selectedNodeId === item.id) {
+                  // Hack to trigger useEffect in Inspector:
+                  const id = item.id;
+                  useGraphStore.getState().setSelectedNode(null);
+                  setTimeout(() => useGraphStore.getState().setSelectedNode(id), 50);
+                }
+              }
+            }
           }
         });
       } catch {

@@ -86,6 +86,20 @@ const useGraphStore = create((set, get) => ({
       set({ items: [item, ...get().items] });
     }
   },
+
+  // Update an existing item
+  updateItem: (id, updates) => {
+    set({
+      items: get().items.map(i => i.id === id ? { ...i, ...updates } : i)
+    });
+  },
+
+  // Update an existing node
+  updateNode: (id, updates) => {
+    set({
+      nodes: get().nodes.map(n => n.id === id ? { ...n, ...updates } : n)
+    });
+  },
 }));
 
 export default useGraphStore;
