@@ -47,6 +47,10 @@ export default function Graph2D() {
       .force('charge', forceManyBody().strength(-30))
       .force('x', forceX(0).strength(0.02))
       .force('y', forceY(0).strength(0.02))
+      .alpha(1)
+      .alphaDecay(0.015)
+      .alphaMin(0.0008)
+      .velocityDecay(0.28)
       .on('tick', () => {
         const pos = {};
         simNodes.forEach(n => { pos[n.id] = { x: n.x, y: n.y }; });
@@ -54,7 +58,16 @@ export default function Graph2D() {
       });
 
     simRef.current = sim;
-    return () => sim.stop();
+    const keepAlive = setInterval(() => {
+      if (sim.alpha() < 0.05) {
+        sim.alpha(0.16).restart();
+      }
+    }, 2000);
+
+    return () => {
+      clearInterval(keepAlive);
+      sim.stop();
+    };
   }, [nodes, edges]);
 
   // 2. Single Frame Drawing Function

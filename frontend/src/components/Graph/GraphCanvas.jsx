@@ -404,24 +404,40 @@ function NodeLabels({ nodes, positions }) {
   const hoveredNodeId = useGraphStore(s => s.hoveredNodeId);
   const selectedNodeId = useGraphStore(s => s.selectedNodeId);
   const [visible, setVisible] = useState(new Set());
+  const visibleRef = useRef(new Set());
   const lastUpdateRef = useRef(0);
   const tempVec = useRef(new THREE.Vector3());
 
+  const setsEqual = (a, b) => {
+    if (a.size !== b.size) return false;
+    for (const v of a) {
+      if (!b.has(v)) return false;
+    }
+    return true;
+  };
+
   useFrame(({ clock }) => {
-    if (clock.elapsedTime - lastUpdateRef.current < 0.35) return;
+    if (clock.elapsedTime - lastUpdateRef.current < 0.5) return;
     lastUpdateRef.current = clock.elapsedTime;
-    const next = new Set();
+    const candidates = [];
     nodes.forEach(n => {
       const pos = positions[n.id];
       if (!pos) return;
       tempVec.current.set(pos[0], pos[1], pos[2]);
       const dist = camera.position.distanceTo(tempVec.current);
-      if (dist < 65) next.add(n.id);
+      if (dist < 65) candidates.push({ id: n.id, dist });
     });
-    setVisible(next);
-  });
+    candidates.sort((a, b) => a.dist - b.dist);
 
-  const fontUrl = 'https://fonts.gstatic.com/s/spacemono/v13/i7dPIFZifjKcF5UAWdDRYEF8QnA.ttf';
+    const next = new Set(candidates.slice(0, 70).map(c => c.id));
+    if (hoveredNodeId) next.add(hoveredNodeId);
+    if (selectedNodeId) next.add(selectedNodeId);
+
+    if (!setsEqual(next, visibleRef.current)) {
+      visibleRef.current = next;
+      setVisible(next);
+    }
+  });
 
   return (
     <>
@@ -436,7 +452,6 @@ function NodeLabels({ nodes, positions }) {
         return (
           <Billboard key={node.id} position={[pos[0], pos[1] + 2.6, pos[2]]}>
             <Text
-              font={fontUrl}
               fontSize={1.05}
               color={color}
               anchorX="center"
