@@ -62,13 +62,16 @@ export default function Graph2D() {
 
     simRef.current = sim;
     const reheatInterval = setInterval(() => {
-      if (sim.alpha() < SIMULATION_ALPHA_REHEAT_THRESHOLD) {
-        sim.alpha(SIMULATION_ALPHA_REHEAT_VALUE).restart();
+      const activeSim = simRef.current;
+      if (!activeSim) return;
+      if (activeSim.alpha() < SIMULATION_ALPHA_REHEAT_THRESHOLD) {
+        activeSim.alpha(SIMULATION_ALPHA_REHEAT_VALUE).restart();
       }
     }, SIMULATION_REHEAT_INTERVAL_MS);
 
     return () => {
       clearInterval(reheatInterval);
+      simRef.current = null;
       sim.stop();
     };
   }, [nodes, edges]);
