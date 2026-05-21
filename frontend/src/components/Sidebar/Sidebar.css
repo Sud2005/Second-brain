@@ -77,6 +77,7 @@
 
 .sidebar__tabs {
   display: flex;
+  flex-wrap: wrap;
   padding: 8px 12px 10px;
   gap: 6px;
   border-bottom: 1px solid var(--border);

@@ -1,13 +1,11 @@
 .inspector {
-  position: fixed;
-  top: var(--hud-height);
-  right: 0;
-  bottom: 0;
+  position: relative;
   width: var(--inspector-width);
   display: flex;
   flex-direction: column;
-  z-index: 60;
   border-left: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--bg-panel);
 }
 
 .inspector__header {
@@ -179,7 +177,6 @@
   text-align: center;
   font-size: 11px;
   color: var(--text-dim);
-  animation: pulse-glow 1.2s var(--ease) infinite;
 }
 
 .inspector__summary {

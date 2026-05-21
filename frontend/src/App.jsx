@@ -57,10 +57,10 @@ export default function App() {
 
           {!isEmpty && viewMode === 'timeline' && <Timeline />}
         </div>
+        <Inspector />
       </div>
 
       <CommunityFilter />
-      <Inspector />
       <QuickCapture />
       <CaptureModal />
 

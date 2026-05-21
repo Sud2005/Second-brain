@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Stars, Billboard, Text, Grid } from '@react-three/drei';
 import { forceSimulation, forceLink, forceManyBody, forceCenter } from 'd3-force-3d';
@@ -60,9 +60,10 @@ function createGlowTexture() {
   canvas.height = 128;
   const ctx = canvas.getContext('2d');
   const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-  gradient.addColorStop(0, 'rgba(0,210,255,0.8)');
-  gradient.addColorStop(0.4, 'rgba(0,210,255,0.35)');
-  gradient.addColorStop(1, 'rgba(0,210,255,0)');
+  gradient.addColorStop(0, 'rgba(255,255,255,1)');
+  gradient.addColorStop(0.3, 'rgba(255,255,255,0.6)');
+  gradient.addColorStop(0.7, 'rgba(255,255,255,0.15)');
+  gradient.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, 128, 128);
   const texture = new THREE.CanvasTexture(canvas);
@@ -70,7 +71,87 @@ function createGlowTexture() {
   return texture;
 }
 
-/* ── Instanced Nodes ───────────────────────────────── */
+/* ── Individual Node Component ─────────────────────── */
+
+function Node({ node, position, isSelected, isHovered, isFaded, onSelect, onHover, glowTexture }) {
+  const meshRef = useRef();
+
+  useFrame((state, delta) => {
+    if (!meshRef.current) return;
+    
+    const base = node.type === 'item' ? 1.1 : 0.9;
+    const baseScale = base + Math.min(2.4, (node.connectionCount || 0) * 0.08);
+    const targetScale = baseScale 
+      * (isSelected ? 1.7 : isHovered ? 1.35 : 1)
+      * (isFaded ? 0.7 : 1);
+      
+    const currentScale = THREE.MathUtils.damp(meshRef.current.scale.x, targetScale, 6, delta);
+    meshRef.current.scale.setScalar(currentScale);
+  });
+
+  const baseColor = useMemo(() => new THREE.Color(node.color || '#00D2FF'), [node.color]);
+  const color = useMemo(() => {
+    const c = baseColor.clone();
+    let intensity = isFaded ? 0.15 : 1;
+    if (isHovered) intensity += 0.5;
+    if (isSelected) intensity += 0.9;
+    return c.multiplyScalar(intensity);
+  }, [baseColor, isSelected, isHovered, isFaded]);
+
+  return (
+    <group position={position}>
+      {/* Node Sphere */}
+      <mesh
+        ref={meshRef}
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect(node.id);
+        }}
+        onPointerOver={(e) => {
+          e.stopPropagation();
+          onHover(node.id);
+          document.body.style.cursor = 'pointer';
+        }}
+        onPointerOut={(e) => {
+          e.stopPropagation();
+          onHover(null);
+          document.body.style.cursor = 'default';
+        }}
+      >
+        <sphereGeometry args={[1, 16, 16]} />
+        <meshPhysicalMaterial
+          color={color}
+          emissive={color}
+          emissiveIntensity={isSelected ? 1.5 : 1.1}
+          metalness={0.6}
+          roughness={0.25}
+          transparent
+          opacity={isFaded ? 0.2 : 0.7}
+          depthWrite={false}
+        />
+      </mesh>
+
+      {/* Atom glow halo */}
+      {!isFaded && (
+        <Billboard>
+          <mesh scale={isSelected ? 5.5 : isHovered ? 4.8 : 4.2}>
+            <planeGeometry args={[1, 1]} />
+            <meshBasicMaterial
+              map={glowTexture}
+              color={node.color || '#00D2FF'}
+              transparent
+              opacity={isSelected ? 0.75 : isHovered ? 0.55 : 0.4}
+              depthWrite={false}
+              blending={THREE.AdditiveBlending}
+            />
+          </mesh>
+        </Billboard>
+      )}
+    </group>
+  );
+}
+
+/* ── Instanced Nodes Container ─────────────────────── */
 
 function NodeInstances({
   nodes,
@@ -81,179 +162,27 @@ function NodeInstances({
   onSelect,
   onHover,
 }) {
-  const meshRef = useRef();
-  const glowRef = useRef();
-  const nodeIds = useMemo(() => nodes.map(n => n.id), [nodes]);
-  const baseScales = useMemo(() => nodes.map(n => {
-    const base = n.type === 'item' ? 1.1 : 0.9;
-    return base + Math.min(2.4, (n.connectionCount || 0) * 0.08);
-  }), [nodes]);
-  const baseColors = useMemo(() => nodes.map(n => new THREE.Color(n.color || '#00D2FF')), [nodes]);
-  const colorArrayRef = useRef(null);
-  const glowColorArrayRef = useRef(null);
-  const currentScalesRef = useRef(nodes.map(() => 1));
-  const pulseRef = useRef({ active: false, origin: new THREE.Vector3(), start: 0 });
-  const { camera } = useThree();
-  const tempMatrix = useMemo(() => new THREE.Matrix4(), []);
-  const tempPos = useMemo(() => new THREE.Vector3(), []);
-  const tempScale = useMemo(() => new THREE.Vector3(), []);
-  const tempColor = useMemo(() => new THREE.Color(), []);
-  const tempQuat = useMemo(() => new THREE.Quaternion(), []);
-
   const glowTexture = useMemo(() => createGlowTexture(), []);
-
-  useEffect(() => {
-    currentScalesRef.current = nodes.map(() => 1);
-    colorArrayRef.current = new Float32Array(nodes.length * 3);
-    glowColorArrayRef.current = new Float32Array(nodes.length * 3);
-    nodes.forEach((node, i) => {
-      const color = baseColors[i];
-      colorArrayRef.current[i * 3] = color.r;
-      colorArrayRef.current[i * 3 + 1] = color.g;
-      colorArrayRef.current[i * 3 + 2] = color.b;
-      glowColorArrayRef.current[i * 3] = color.r;
-      glowColorArrayRef.current[i * 3 + 1] = color.g;
-      glowColorArrayRef.current[i * 3 + 2] = color.b;
-    });
-
-    if (meshRef.current) {
-      meshRef.current.instanceColor = new THREE.InstancedBufferAttribute(colorArrayRef.current, 3);
-    }
-    if (glowRef.current) {
-      glowRef.current.instanceColor = new THREE.InstancedBufferAttribute(glowColorArrayRef.current, 3);
-    }
-  }, [nodes, baseColors]);
-
-  useEffect(() => {
-    if (selectedNodeId && positions[selectedNodeId]) {
-      const pos = positions[selectedNodeId];
-      pulseRef.current = {
-        active: true,
-        origin: new THREE.Vector3(pos[0], pos[1], pos[2]),
-        start: performance.now(),
-      };
-    }
-  }, [selectedNodeId, positions]);
-
-  useFrame((state, delta) => {
-    if (!meshRef.current || !glowRef.current) return;
-    const now = performance.now();
-    const pulseActive = pulseRef.current.active;
-    const pulseElapsed = pulseActive ? (now - pulseRef.current.start) / 1000 : 0;
-    const pulseStrength = pulseActive ? Math.max(0, 1 - pulseElapsed / 1.2) : 0;
-    if (pulseElapsed > 1.2) pulseRef.current.active = false;
-
-    nodes.forEach((node, i) => {
-      const pos = positions[node.id];
-      if (!pos) return;
-      tempPos.set(pos[0], pos[1], pos[2]);
-      const isSelected = node.id === selectedNodeId;
-      const isHovered = node.id === hoveredNodeId;
-      const isFaded = activeCommunityFilter != null && node.communityId !== activeCommunityFilter;
-      let pulseBoost = 0;
-      if (pulseStrength > 0) {
-        const dist = tempPos.distanceTo(pulseRef.current.origin);
-        if (dist < 30) {
-          pulseBoost = (1 - dist / 30) * pulseStrength * 0.6;
-        }
-      }
-
-      const targetScale = baseScales[i]
-        * (isSelected ? 1.7 : isHovered ? 1.35 : 1)
-        * (isFaded ? 0.7 : 1)
-        + pulseBoost;
-
-      currentScalesRef.current[i] = THREE.MathUtils.damp(
-        currentScalesRef.current[i],
-        targetScale,
-        6,
-        delta,
-      );
-
-      tempScale.setScalar(currentScalesRef.current[i]);
-      tempQuat.identity();
-      tempMatrix.compose(tempPos, tempQuat, tempScale);
-      meshRef.current.setMatrixAt(i, tempMatrix);
-
-      const haloScale = currentScalesRef.current[i] * 4.2;
-      tempScale.set(haloScale, haloScale, haloScale);
-      tempMatrix.compose(tempPos, camera.quaternion, tempScale);
-      glowRef.current.setMatrixAt(i, tempMatrix);
-
-      let intensity = isFaded ? 0.15 : 1;
-      if (isHovered) intensity += 0.5;
-      if (isSelected) intensity += 0.9;
-      if (pulseBoost > 0) intensity += pulseBoost;
-      tempColor.copy(baseColors[i]).multiplyScalar(intensity);
-
-      colorArrayRef.current[i * 3] = tempColor.r;
-      colorArrayRef.current[i * 3 + 1] = tempColor.g;
-      colorArrayRef.current[i * 3 + 2] = tempColor.b;
-      glowColorArrayRef.current[i * 3] = tempColor.r;
-      glowColorArrayRef.current[i * 3 + 1] = tempColor.g;
-      glowColorArrayRef.current[i * 3 + 2] = tempColor.b;
-    });
-
-    meshRef.current.instanceMatrix.needsUpdate = true;
-    glowRef.current.instanceMatrix.needsUpdate = true;
-    if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true;
-    if (glowRef.current.instanceColor) glowRef.current.instanceColor.needsUpdate = true;
-  });
-
-  const handlePointerMove = (e) => {
-    e.stopPropagation();
-    const idx = e.instanceId;
-    if (idx == null) return;
-    onHover(nodeIds[idx]);
-    document.body.style.cursor = 'pointer';
-  };
-
-  const handlePointerOut = () => {
-    onHover(null);
-    document.body.style.cursor = 'default';
-  };
-
-  const handleClick = (e) => {
-    e.stopPropagation();
-    const idx = e.instanceId;
-    if (idx == null) return;
-    onSelect(nodeIds[idx]);
-  };
 
   return (
     <>
-      <instancedMesh
-        ref={meshRef}
-        args={[null, null, nodes.length]}
-        onPointerMove={handlePointerMove}
-        onPointerOut={handlePointerOut}
-        onClick={handleClick}
-      >
-        <sphereGeometry args={[1, 18, 18]} />
-        <meshPhysicalMaterial
-          color="#00D2FF"
-          emissive="#00D2FF"
-          emissiveIntensity={1.1}
-          metalness={0.6}
-          roughness={0.25}
-          transparent
-          opacity={0.7}
-          depthWrite={false}
-          transmission={0.6}
-          vertexColors
-        />
-      </instancedMesh>
-      <instancedMesh ref={glowRef} args={[null, null, nodes.length]}>
-        <planeGeometry args={[1, 1]} />
-        <meshBasicMaterial
-          map={glowTexture}
-          transparent
-          opacity={0.6}
-          depthWrite={false}
-          blending={THREE.AdditiveBlending}
-          vertexColors
-        />
-      </instancedMesh>
+      {nodes.map(node => {
+        const pos = positions[node.id];
+        if (!pos) return null;
+        return (
+          <Node
+            key={node.id}
+            node={node}
+            position={pos}
+            isSelected={node.id === selectedNodeId}
+            isHovered={node.id === hoveredNodeId}
+            isFaded={activeCommunityFilter != null && node.communityId !== activeCommunityFilter}
+            onSelect={onSelect}
+            onHover={onHover}
+            glowTexture={glowTexture}
+          />
+        );
+      })}
     </>
   );
 }
@@ -326,7 +255,7 @@ function EdgeSegments({ edges, positions, nodes, activeCommunityFilter }) {
   return (
     <>
       {mention.positions.length > 0 && (
-        <lineSegments>
+        <lineSegments frustumCulled={false}>
           <bufferGeometry>
             <bufferAttribute
               attach="attributes-position"
@@ -351,7 +280,7 @@ function EdgeSegments({ edges, positions, nodes, activeCommunityFilter }) {
         </lineSegments>
       )}
       {related.positions.length > 0 && (
-        <lineSegments>
+        <lineSegments frustumCulled={false}>
           <bufferGeometry>
             <bufferAttribute
               attach="attributes-position"
@@ -376,7 +305,7 @@ function EdgeSegments({ edges, positions, nodes, activeCommunityFilter }) {
         </lineSegments>
       )}
       {cooccur.positions.length > 0 && (
-        <lineSegments ref={dashedRef}>
+        <lineSegments ref={dashedRef} frustumCulled={false}>
           <bufferGeometry>
             <bufferAttribute
               attach="attributes-position"
@@ -406,16 +335,34 @@ function EdgeSegments({ edges, positions, nodes, activeCommunityFilter }) {
   );
 }
 
-/* ── Data packets ───────────────────────────────────── */
+/* ── Individual Data Packet Component ──────────────── */
+
+function Packet({ packet }) {
+  const meshRef = useRef();
+
+  useFrame(({ clock }) => {
+    if (!meshRef.current) return;
+    const t = (clock.elapsedTime * packet.speed + packet.offset) % 1;
+    meshRef.current.position.lerpVectors(packet.start, packet.end, t);
+  });
+
+  return (
+    <mesh ref={meshRef}>
+      <sphereGeometry args={[0.32, 8, 8]} />
+      <meshBasicMaterial
+        color={packet.color}
+        transparent
+        opacity={0.9}
+        depthWrite={false}
+        blending={THREE.AdditiveBlending}
+      />
+    </mesh>
+  );
+}
+
+/* ── Data packets Container ─────────────────────────── */
 
 function DataPackets({ edges, positions, nodes, activeCommunityFilter }) {
-  const packetRef = useRef();
-  const tempMatrix = useRef(new THREE.Matrix4());
-  const tempPosition = useRef(new THREE.Vector3());
-  const tempScale = useRef(new THREE.Vector3(0.35, 0.35, 0.35));
-  const tempQuat = useRef(new THREE.Quaternion());
-  const colorsRef = useRef(null);
-
   const packets = useMemo(() => {
     const nodeMap = new Map();
     nodes.forEach(n => nodeMap.set(n.id, n));
@@ -438,50 +385,15 @@ function DataPackets({ edges, positions, nodes, activeCommunityFilter }) {
         color,
       });
     });
-    return list.slice(0, 200);
+    return list.slice(0, 150); // limit to 150 for maximum performance
   }, [edges, positions, nodes, activeCommunityFilter]);
 
-  useEffect(() => {
-    if (!packetRef.current) return;
-    colorsRef.current = new Float32Array(packets.length * 3);
-    packets.forEach((p, i) => {
-      const c = new THREE.Color(p.color);
-      colorsRef.current[i * 3] = c.r;
-      colorsRef.current[i * 3 + 1] = c.g;
-      colorsRef.current[i * 3 + 2] = c.b;
-    });
-    packetRef.current.instanceColor = new THREE.InstancedBufferAttribute(colorsRef.current, 3);
-  }, [packets]);
-
-  useFrame(({ clock }) => {
-    if (!packetRef.current) return;
-    packets.forEach((packet, i) => {
-      const t = (clock.elapsedTime * packet.speed + packet.offset) % 1;
-      tempPosition.current.lerpVectors(packet.start, packet.end, t);
-      tempMatrix.current.compose(
-        tempPosition.current,
-        tempQuat.current,
-        tempScale.current,
-      );
-      packetRef.current.setMatrixAt(i, tempMatrix.current);
-    });
-    packetRef.current.instanceMatrix.needsUpdate = true;
-    if (packetRef.current.instanceColor) packetRef.current.instanceColor.needsUpdate = true;
-  });
-
-  if (packets.length === 0) return null;
-
   return (
-    <instancedMesh ref={packetRef} args={[null, null, packets.length]}>
-      <sphereGeometry args={[1, 10, 10]} />
-      <meshBasicMaterial
-        transparent
-        opacity={0.9}
-        depthWrite={false}
-        blending={THREE.AdditiveBlending}
-        vertexColors
-      />
-    </instancedMesh>
+    <>
+      {packets.map((p, i) => (
+        <Packet key={i} packet={p} />
+      ))}
+    </>
   );
 }
 
@@ -577,35 +489,6 @@ function CameraRig({ target }) {
   return null;
 }
 
-/* ── Rings ──────────────────────────────────────────── */
-
-function ScanRing() {
-  const ringRef = useRef();
-  useFrame((_, delta) => {
-    if (ringRef.current) ringRef.current.rotation.y += delta * 0.15;
-  });
-  return (
-    <mesh ref={ringRef} rotation={[Math.PI / 2, 0, 0]}>
-      <torusGeometry args={[42, 0.08, 16, 120]} />
-      <meshBasicMaterial color="#00D2FF" transparent opacity={0.4} wireframe />
-    </mesh>
-  );
-}
-
-function SelectedRing({ position }) {
-  const ringRef = useRef();
-  useFrame((_, delta) => {
-    if (ringRef.current) ringRef.current.rotation.y += delta * 0.8;
-  });
-  if (!position) return null;
-  return (
-    <mesh ref={ringRef} position={position}>
-      <torusGeometry args={[2.8, 0.05, 16, 80]} />
-      <meshBasicMaterial color="#00D2FF" transparent opacity={0.7} wireframe />
-    </mesh>
-  );
-}
-
 /* ── Scene content ─────────────────────────────────── */
 
 function SceneContent({ nodes, edges }) {
@@ -617,17 +500,16 @@ function SceneContent({ nodes, edges }) {
 
   const positions = useForceLayout(nodes, edges);
   const selectedPos = selectedNodeId ? positions[selectedNodeId] : null;
-  const selectedVec = selectedPos ? new THREE.Vector3(...selectedPos) : null;
 
   return (
     <>
-      <color attach="background" args={['#00020A']} />
-      <fog attach="fog" args={['#00020A', 80, 200]} />
-      <ambientLight intensity={0.05} color="#001830" />
-      <pointLight position={[40, 50, 40]} intensity={0.6} color="#00D2FF" />
-      <pointLight position={[-40, -30, -40]} intensity={0.4} color="#4b7fff" />
+      <color attach="background" args={['#1e1e1e']} />
+      <fog attach="fog" args={['#1e1e1e', 80, 200]} />
+      <ambientLight intensity={0.4} color="#ffffff" />
+      <pointLight position={[40, 50, 40]} intensity={0.8} color="#ffffff" />
+      <pointLight position={[-40, -30, -40]} intensity={0.6} color="#cccccc" />
 
-      <Stars radius={300} depth={60} count={3000} factor={2} saturation={0.3} fade speed={1} />
+      <Stars radius={300} depth={60} count={3000} factor={1.5} saturation={0} fade speed={0.5} />
       <Grid
         position={[0, -15, 0]}
         args={[200, 200]}
@@ -641,8 +523,6 @@ function SceneContent({ nodes, edges }) {
         fadeStrength={1}
         infiniteGrid
       />
-
-      <ScanRing />
 
       <EdgeSegments
         edges={edges}
@@ -668,7 +548,6 @@ function SceneContent({ nodes, edges }) {
       />
 
       <NodeLabels nodes={nodes} positions={positions} />
-      <SelectedRing position={selectedVec} />
 
       <CameraRig target={selectedPos} />
       <OrbitControls makeDefault enableDamping dampingFactor={0.08} minDistance={8} maxDistance={260} />
@@ -681,13 +560,11 @@ function SceneContent({ nodes, edges }) {
 export default function GraphCanvas() {
   const nodes = useGraphStore(s => s.nodes);
   const edges = useGraphStore(s => s.edges);
-  const setSelectedNode = useGraphStore(s => s.setSelectedNode);
 
   return (
     <div className="graph-canvas">
       <Canvas
         camera={{ position: [40, 30, 40], fov: 60, near: 0.1, far: 1000 }}
-        onPointerMissed={() => setSelectedNode(null)}
         gl={{ antialias: false, alpha: true, powerPreference: 'high-performance' }}
         dpr={[1, 1.5]}
       >
