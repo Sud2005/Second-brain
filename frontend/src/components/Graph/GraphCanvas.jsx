@@ -421,8 +421,9 @@ function NodeLabels({ nodes, positions }) {
   };
 
   useFrame(({ clock }) => {
-    if ((clock.elapsedTime - lastUpdateRef.current) * 1000 < LABEL_UPDATE_INTERVAL_MS) return;
-    lastUpdateRef.current = clock.elapsedTime;
+    const nowMs = clock.elapsedTime * 1000;
+    if (nowMs - lastUpdateRef.current < LABEL_UPDATE_INTERVAL_MS) return;
+    lastUpdateRef.current = nowMs;
     const candidates = [];
     nodes.forEach(n => {
       const pos = positions[n.id];
@@ -433,9 +434,13 @@ function NodeLabels({ nodes, positions }) {
     });
     candidates.sort((a, b) => a.dist - b.dist);
 
-    const next = new Set(candidates.slice(0, MAX_VISIBLE_LABELS).map(c => c.id));
+    const next = new Set();
     if (hoveredNodeId) next.add(hoveredNodeId);
     if (selectedNodeId) next.add(selectedNodeId);
+    for (const candidate of candidates) {
+      if (next.size >= MAX_VISIBLE_LABELS) break;
+      next.add(candidate.id);
+    }
 
     if (!setsEqual(next, visibleRef.current)) {
       visibleRef.current = next;
