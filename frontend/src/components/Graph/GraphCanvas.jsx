@@ -6,6 +6,10 @@ import gsap from 'gsap';
 import * as THREE from 'three';
 import useGraphStore from '../../store/graphStore';
 
+const LABEL_UPDATE_INTERVAL_SECONDS = 0.5;
+const LABEL_VISIBILITY_DISTANCE = 65;
+const MAX_VISIBLE_LABELS = 70;
+
 /* ── 3D Force layout engine ────────────────────────── */
 
 function useForceLayout(nodes, edges) {
@@ -404,24 +408,45 @@ function NodeLabels({ nodes, positions }) {
   const hoveredNodeId = useGraphStore(s => s.hoveredNodeId);
   const selectedNodeId = useGraphStore(s => s.selectedNodeId);
   const [visible, setVisible] = useState(new Set());
+  const visibleRef = useRef(new Set());
   const lastUpdateRef = useRef(0);
   const tempVec = useRef(new THREE.Vector3());
 
+  const setsEqual = (a, b) => {
+    if (a.size !== b.size) return false;
+    for (const v of a) {
+      if (!b.has(v)) return false;
+    }
+    return true;
+  };
+
   useFrame(({ clock }) => {
-    if (clock.elapsedTime - lastUpdateRef.current < 0.35) return;
-    lastUpdateRef.current = clock.elapsedTime;
-    const next = new Set();
+    const nowSeconds = clock.elapsedTime;
+    if (nowSeconds - lastUpdateRef.current < LABEL_UPDATE_INTERVAL_SECONDS) return;
+    lastUpdateRef.current = nowSeconds;
+    const candidates = [];
     nodes.forEach(n => {
       const pos = positions[n.id];
       if (!pos) return;
       tempVec.current.set(pos[0], pos[1], pos[2]);
       const dist = camera.position.distanceTo(tempVec.current);
-      if (dist < 65) next.add(n.id);
+      if (dist < LABEL_VISIBILITY_DISTANCE) candidates.push({ id: n.id, dist });
     });
-    setVisible(next);
-  });
+    candidates.sort((a, b) => a.dist - b.dist);
 
-  const fontUrl = 'https://fonts.gstatic.com/s/spacemono/v13/i7dPIFZifjKcF5UAWdDRYEF8QnA.ttf';
+    const next = new Set();
+    if (hoveredNodeId) next.add(hoveredNodeId);
+    if (selectedNodeId) next.add(selectedNodeId);
+    for (const candidate of candidates) {
+      if (next.size >= MAX_VISIBLE_LABELS) break;
+      next.add(candidate.id);
+    }
+
+    if (!setsEqual(next, visibleRef.current)) {
+      visibleRef.current = next;
+      setVisible(next);
+    }
+  });
 
   return (
     <>
@@ -436,7 +461,6 @@ function NodeLabels({ nodes, positions }) {
         return (
           <Billboard key={node.id} position={[pos[0], pos[1] + 2.6, pos[2]]}>
             <Text
-              font={fontUrl}
               fontSize={1.05}
               color={color}
               anchorX="center"

@@ -12,6 +12,9 @@ const COLORS = [
   '#00FFD1', '#FF4B6E', '#A259FF', '#FFB800',
   '#00A8FF', '#FF6B35', '#00FF8C', '#FF3CAC',
 ];
+const SIMULATION_REHEAT_INTERVAL_MS = 2000;
+const SIMULATION_ALPHA_REHEAT_THRESHOLD = 0.05;
+const SIMULATION_ALPHA_REHEAT_VALUE = 0.16;
 
 export default function Graph2D() {
   const canvasRef = useRef(null);
@@ -47,6 +50,10 @@ export default function Graph2D() {
       .force('charge', forceManyBody().strength(-30))
       .force('x', forceX(0).strength(0.02))
       .force('y', forceY(0).strength(0.02))
+      .alpha(1)
+      .alphaDecay(0.015)
+      .alphaMin(0.0008)
+      .velocityDecay(0.28)
       .on('tick', () => {
         const pos = {};
         simNodes.forEach(n => { pos[n.id] = { x: n.x, y: n.y }; });
@@ -54,7 +61,19 @@ export default function Graph2D() {
       });
 
     simRef.current = sim;
-    return () => sim.stop();
+    const reheatInterval = setInterval(() => {
+      const activeSim = simRef.current;
+      if (!activeSim) return;
+      if (activeSim.alpha() < SIMULATION_ALPHA_REHEAT_THRESHOLD) {
+        activeSim.alpha(SIMULATION_ALPHA_REHEAT_VALUE).restart();
+      }
+    }, SIMULATION_REHEAT_INTERVAL_MS);
+
+    return () => {
+      clearInterval(reheatInterval);
+      simRef.current = null;
+      sim.stop();
+    };
   }, [nodes, edges]);
 
   // 2. Single Frame Drawing Function
