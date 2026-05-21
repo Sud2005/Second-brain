@@ -13,6 +13,8 @@ const COLORS = [
   '#00A8FF', '#FF6B35', '#00FF8C', '#FF3CAC',
 ];
 const SIMULATION_REHEAT_INTERVAL_MS = 2000;
+const SIMULATION_ALPHA_REHEAT_THRESHOLD = 0.05;
+const SIMULATION_ALPHA_REHEAT_VALUE = 0.16;
 
 export default function Graph2D() {
   const canvasRef = useRef(null);
@@ -60,8 +62,8 @@ export default function Graph2D() {
 
     simRef.current = sim;
     const simulationReheatingInterval = setInterval(() => {
-      if (sim.alpha() < 0.05) {
-        sim.alpha(0.16).restart();
+      if (sim.alpha() < SIMULATION_ALPHA_REHEAT_THRESHOLD) {
+        sim.alpha(SIMULATION_ALPHA_REHEAT_VALUE).restart();
       }
     }, SIMULATION_REHEAT_INTERVAL_MS);
 

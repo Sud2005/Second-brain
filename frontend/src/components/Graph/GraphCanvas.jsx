@@ -6,7 +6,7 @@ import gsap from 'gsap';
 import * as THREE from 'three';
 import useGraphStore from '../../store/graphStore';
 
-const LABEL_UPDATE_INTERVAL_SECONDS = 0.5;
+const LABEL_UPDATE_INTERVAL_MS = 500;
 const LABEL_VISIBILITY_DISTANCE = 65;
 const MAX_VISIBLE_LABELS = 70;
 
@@ -421,7 +421,7 @@ function NodeLabels({ nodes, positions }) {
   };
 
   useFrame(({ clock }) => {
-    if (clock.elapsedTime - lastUpdateRef.current < LABEL_UPDATE_INTERVAL_SECONDS) return;
+    if ((clock.elapsedTime - lastUpdateRef.current) * 1000 < LABEL_UPDATE_INTERVAL_MS) return;
     lastUpdateRef.current = clock.elapsedTime;
     const candidates = [];
     nodes.forEach(n => {
