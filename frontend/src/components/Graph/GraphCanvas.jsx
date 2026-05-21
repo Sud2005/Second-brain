@@ -6,6 +6,10 @@ import gsap from 'gsap';
 import * as THREE from 'three';
 import useGraphStore from '../../store/graphStore';
 
+const LABEL_UPDATE_INTERVAL_SECONDS = 0.5;
+const LABEL_VISIBILITY_DISTANCE = 65;
+const MAX_VISIBLE_LABELS = 70;
+
 /* ── 3D Force layout engine ────────────────────────── */
 
 function useForceLayout(nodes, edges) {
@@ -417,7 +421,7 @@ function NodeLabels({ nodes, positions }) {
   };
 
   useFrame(({ clock }) => {
-    if (clock.elapsedTime - lastUpdateRef.current < 0.5) return;
+    if (clock.elapsedTime - lastUpdateRef.current < LABEL_UPDATE_INTERVAL_SECONDS) return;
     lastUpdateRef.current = clock.elapsedTime;
     const candidates = [];
     nodes.forEach(n => {
@@ -425,11 +429,11 @@ function NodeLabels({ nodes, positions }) {
       if (!pos) return;
       tempVec.current.set(pos[0], pos[1], pos[2]);
       const dist = camera.position.distanceTo(tempVec.current);
-      if (dist < 65) candidates.push({ id: n.id, dist });
+      if (dist < LABEL_VISIBILITY_DISTANCE) candidates.push({ id: n.id, dist });
     });
     candidates.sort((a, b) => a.dist - b.dist);
 
-    const next = new Set(candidates.slice(0, 70).map(c => c.id));
+    const next = new Set(candidates.slice(0, MAX_VISIBLE_LABELS).map(c => c.id));
     if (hoveredNodeId) next.add(hoveredNodeId);
     if (selectedNodeId) next.add(selectedNodeId);
 

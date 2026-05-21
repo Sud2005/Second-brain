@@ -12,6 +12,7 @@ const COLORS = [
   '#00FFD1', '#FF4B6E', '#A259FF', '#FFB800',
   '#00A8FF', '#FF6B35', '#00FF8C', '#FF3CAC',
 ];
+const SIMULATION_REHEAT_INTERVAL_MS = 2000;
 
 export default function Graph2D() {
   const canvasRef = useRef(null);
@@ -58,14 +59,14 @@ export default function Graph2D() {
       });
 
     simRef.current = sim;
-    const keepAlive = setInterval(() => {
+    const simulationReheatingInterval = setInterval(() => {
       if (sim.alpha() < 0.05) {
         sim.alpha(0.16).restart();
       }
-    }, 2000);
+    }, SIMULATION_REHEAT_INTERVAL_MS);
 
     return () => {
-      clearInterval(keepAlive);
+      clearInterval(simulationReheatingInterval);
       sim.stop();
     };
   }, [nodes, edges]);
